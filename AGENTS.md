@@ -25,8 +25,5 @@ There is no consolidated automated test suite configured at the repository root 
 
 When adding tests, place them close to the feature they cover and name them after the module or behavior under test.
 
-## Commit & Pull Request Guidelines
-Git history currently starts with a single `first commit`, so no strong conventional pattern is established. Use short, imperative commit subjects, for example `Fix MCP config normalization`. Pull requests should explain the user-visible impact, note restoration-specific tradeoffs, list validation steps, and include screenshots only for TUI/UI changes.
-
 ## Restoration Notes
 This is a reconstructed source tree, not pristine upstream. Prefer minimal, auditable changes, and document any workaround added because a module was restored with fallbacks or shim behavior.

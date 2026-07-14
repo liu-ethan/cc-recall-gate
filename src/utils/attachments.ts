@@ -2336,7 +2336,8 @@ export function memoryHeader(path: string, mtimeMs: number): string {
  * per user turn and runs while the main model streams and tools execute.
  * At the collect point (post-tools), the caller reads settledAt to
  * consume-if-ready or skip-and-retry-next-iteration — the prefetch never
- * blocks the turn.
+ * blocks the turn. Gate-driven SKIP_RECALL can call abort(), which marks the
+ * handle skipped so a later-resolving promise is still ineligible for consume.
  *
  * Disposable: query.ts binds with `using`, so [Symbol.dispose] fires on all
  * generator exit paths (return, throw, .return() closure) — aborting the
@@ -2349,6 +2350,9 @@ export type MemoryPrefetch = {
   settledAt: number | null
   /** Set by the collect point in query.ts. -1 until consumed. */
   consumedOnIteration: number
+  /** True once this turn has explicitly opted out of consuming the prefetch. */
+  skipped: boolean
+  abort(reason?: string): void
   [Symbol.dispose](): void
 }
 
@@ -2407,6 +2411,11 @@ export function startRelevantMemoryPrefetch(
     promise,
     settledAt: null,
     consumedOnIteration: -1,
+    skipped: false,
+    abort(reason?: string) {
+      handle.skipped = true
+      controller.abort(reason)
+    },
     [Symbol.dispose]() {
       controller.abort()
       logEvent('tengu_memdir_prefetch_collected', {

@@ -1598,6 +1598,7 @@ async function* queryLoop(
     // toolUseBlocks array would miss.
     if (
       pendingMemoryPrefetch &&
+      !pendingMemoryPrefetch.skipped &&
       pendingMemoryPrefetch.settledAt !== null &&
       pendingMemoryPrefetch.consumedOnIteration === -1
     ) {
