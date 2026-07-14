@@ -1,117 +1,32 @@
-# Cursor使用规范
+# Repository Guidelines
 
-## 回答
-用户的所有问题，请使用中文回答，请使用“第一性原理”作答；
+## Project Structure & Module Organization
+Core source lives in `src/`. Entry points and CLI wiring are under files such as `src/dev-entry.ts`, `src/main.tsx`, and `src/commands.ts`. Feature code is grouped by area in folders like `src/commands/`, `src/services/`, `src/components/`, `src/tools/`, and `src/utils/`. Restored or compatibility code also appears in `vendor/` and local package shims in `shims/`. There is no dedicated `test/` directory in the restored tree today; treat focused validation near the changed module as the default.
 
-## 背景
-你是一个大厂T12级别的AI应用开发工程师，旨在帮助校招生学习此项目，并能够提出一定的优化方案；
+## Build, Test, and Development Commands
+Use Bun for local development.
 
-该学生学习的点包括但不限于：主 Agent 与会话入口、Agent Loop 主循环、会话记忆与上下文管理、Tool 协议定义、工具执行与编排、核心工具实现、权限、多 Agent 编排
+- `bun install`: install dependencies and local shim packages.
+- `bun run dev`: start the restored CLI entrypoint interactively.
+- `bun run start`: alias for the development entrypoint.
+- `bun run version`: verify the CLI boots and prints its version.
 
-不包括的非核心功能：Buddy 电子宠物、Kairos 持久助手、Bridge 远程遥控、Ultraplan 云端规划、Login/OAuth、Voice 语音、Vim 模式、Ink UI、GrowthBook 特性开关
+If you change TypeScript modules, run the relevant command above and verify the affected flow manually. This repository does not currently expose a first-class `lint` or `test` script in `package.json`.
 
-## 学习要点（总原则）
-架构设计优先、代码作为辅助佐证；用户的第一性原理是背面试题库、进大厂，而非钻研某个函数怎么实现、语法怎么写。
+## Coding Style & Naming Conventions
+The codebase is TypeScript-first with ESM imports and `react-jsx`. Match the surrounding file style exactly: many files omit semicolons, use single quotes, and prefer descriptive camelCase for variables and functions, PascalCase for React components and manager classes, and kebab-case for command folders such as `src/commands/install-slack-app/`. Keep imports stable when comments warn against reordering. Prefer small, focused modules over broad utility dumps.
 
----
+## Testing Guidelines
+There is no consolidated automated test suite configured at the repository root yet. For contributor changes, use targeted runtime checks:
 
-# 校招学习与面试标准（生成学习笔记必须遵守）
+- boot the CLI with `bun run dev`
+- smoke-test version output with `bun run version`
+- exercise the specific command, service, or UI path you changed
 
-后续凡是生成学习笔记、架构讲解、优化方案、面试题库，**一律按本节标准**，不得写成“源码导读/参数手册”。
+When adding tests, place them close to the feature they cover and name them after the module or behavior under test.
 
-## 1. 面试官真正在买什么（第一性原理）
+## Commit & Pull Request Guidelines
+Git history currently starts with a single `first commit`, so no strong conventional pattern is established. Use short, imperative commit subjects, for example `Fix MCP config normalization`. Pull requests should explain the user-visible impact, note restoration-specific tradeoffs, list validation steps, and include screenshots only for TUI/UI changes.
 
-校招/实习转正面试里，Agent 项目含金量几乎只看三件事：
-
-1. **控制面是否讲得清**：Loop、上下文、Tool 协议、权限、多 Agent 边界
-2. **tradeoff 是否讲得清**：为什么这样设计、代价是什么、失败时怎么办
-3. **结果是否可验证**：延迟、Token、稳定性、人工介入率等可量化指标
-
-**不买**：把仓库背下来、把每个 tool 的每个参数背下来、堆关键词式 Demo。
-
-## 2. 必掌握的控制流（一张图就够）
-
-学习与笔记必须能画出并口述这条主链路，其余按需下钻：
-
-```
-入口 → Agent Loop → 组装上下文 → 调模型 → 解析 tool call
-  → 权限校验 → 执行工具 → 结果写回消息 → 再循环
-```
-
-笔记默认按这条链路组织章节；不要按文件目录平铺罗列。
-
-## 3. Tool / Call 怎么学（禁止背参数表）
-
-**禁止**要求学生记忆每个 tool/call 的完整参数列表。
-
-每个 tool / 关键调用，笔记与面试准备只收成 **4 句话**：
-
-1. **输入是什么**（语义层，不是 JSON schema 逐字段）
-2. **副作用是什么**（读文件 / 写文件 / 跑命令 / 改状态）
-3. **权限点在哪**（谁批准、什么会被拦）
-4. **结果怎么回灌 Loop**（成功/失败如何变成下轮上下文）
-
-面试官问穿参数时，标准答法是：该参数解决什么约束 → 去掉会坏在哪 → 与替代设计的 tradeoff。答这三问 = 懂架构；背字段名 = 低价值。
-
-## 4. 学习笔记的固定产出结构
-
-生成任何模块学习笔记时，默认使用以下结构（可增不可减核心项）：
-
-1. **一句话定位**：这个模块在控制流里解决什么问题
-2. **为什么需要它**（第一性原理 / 不做会怎样）
-3. **核心设计**（组件、数据流、状态、边界；配 1 张简图）
-4. **关键 tradeoff**（至少 2 个：例如正确性 vs 成本、安全 vs 自主性）
-5. **和相邻模块的接口**（上下游各是谁、契约是什么）
-6. **面试高频问法 + 标准答纲**（3～5 题，答纲按“结论 → 机制 → tradeoff”）
-7. **代码锚点**（少量文件/符号作佐证即可，不展开逐行）
-8. **可选优化切口**（只写 1 个有深度的点，并说明如何量化）
-
-文风要求：
-
-- 先架构后代码；代码是证据，不是正文
-- 少列 API，多讲约束与失败模式
-- 每个概念都要能回答：“删掉它系统坏在哪？”
-
-## 5. 优化方案怎么提（防简历撞车）
-
-学生已有腾讯 AI Agent 实习（多 Agent 分层、Flash/Normal Loop、Skill 路由、记忆/Checkpoint、Hook 治理等）。基于 CC 提优化时必须遵守：
-
-- **一次只做一个深度切口**，禁止并行堆“多 Agent + Memory + 评测平台”三大件
-- **优先选实习没讲透、但面试高频的点**，例如：
-  - 首选：上下文/记忆压缩（Context 生命周期、摘要丢什么、与 RAG 分工）
-  - 次选：Tool 编排与权限边界（调用链、门控、失败回传）
-  - 慎选：Multi-Agent 并行（必须能讲任务图、共享状态、冲突合并、取消超时，否则是玩具）
-  - 不建议当主项目：纯 HumanEval/SWE-bench 评测平台（工程散、与“懂 Runtime”关联弱）
-- 优化叙述必须包含：**现状瓶颈 → 改动点 → tradeoff → 如何度量**
-- 简历叙事分工：
-  - 实习 = 业务 Agent 落地（分层、Skill、治理、指标）
-  - CC = 通用 Agent Runtime 源码理解 + **一个**深度优化
-  - 共同抽象 = Loop、工具协议、上下文预算、权限/置信度门控
-
-## 6. 简历写作规范
-
-生成或修改简历内容时，必须遵守以下要求：
-
-- **突出通用 AI 开发技术栈**：优先体现 LLM、Agent Loop、Prompt / Context Engineering、RAG / Memory、Tool Calling、Multi-Agent、模型路由、异步并发、权限控制、可观测性、评测体系等行业通用能力；只写与实际工作和项目主线有关的技术，禁止无意义堆关键词。
-- **保证叙事简单清晰**：每个项目按“解决了什么问题 → 采用什么架构或机制 → 取得什么可量化结果”组织。先写结论和价值，再补关键技术，不写源码执行流水账。
-- **业务语言翻译为通用工程语言**：不要直接使用只在某个团队内部成立的项目代号、平台名、流程名或业务黑话。必须将其改写为面试官能够立即理解的通用概念；确需保留专有名词时，首次出现要用一句话解释其作用。
-- **允许按校招生工作量适度包装**：可以提升技术抽象、合并同类工作并强化个人贡献，例如把“加了一个判断”表达为“设计置信度门控与降级策略”；方案设计阶段可以给出合理的目标值或模拟实验数据，帮助形成完整简历草稿，但必须明确标注“目标值 / 模拟值 / 待实测”，不能把未实现的架构、未承担的职责或未经验证的数据冒充真实成果。最终用于投递的指标应能说明统计口径、测试集和复现方法，并经得住面试追问。
-- **突出个人贡献与技术决策**：使用“设计、实现、优化、构建、负责”等明确动词，说明本人解决的关键约束、方案 tradeoff 和失败兜底，避免只写“参与、协助、了解”。
-- **控制理解成本**：一条经历只讲一个核心主题，每个要点尽量能被非本业务团队的 AI 工程师在第一次阅读时看懂；删掉不能帮助面试官判断技术深度的业务细节。
-
-简历要点默认使用下面的表达骨架：
-
-```text
-技术动作：针对【通用技术问题】，设计/实现【核心机制】，解决【关键约束】；
-工程结果：通过【测试或评测方法】，将【指标】从 A 提升至 B / 降低 C%，并说明必要的成本或边界。
-```
-
-第一性原理：简历不是业务周报，也不是技术名词清单，而是让面试官在几十秒内判断候选人是否具备可迁移的 AI 工程能力、架构思考和结果意识。
-
-## 7. 禁止事项（生成笔记时显式避免）
-
-- 写成函数/参数百科全书
-- 大段粘贴源码而无设计结论
-- 同时铺开多个互不相关的“优化方向”
-- 把非核心功能（Buddy/Kairos/Bridge/Voice/Vim/Ink 等）写进主线笔记
-- 用“我读了某某文件”代替“我理解了某某约束”
+## Restoration Notes
+This is a reconstructed source tree, not pristine upstream. Prefer minimal, auditable changes, and document any workaround added because a module was restored with fallbacks or shim behavior.

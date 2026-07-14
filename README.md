@@ -1,306 +1,174 @@
-# Claude Code 源码还原
-
-> 从 `@anthropic-ai/claude-code` npm 包的 source map 中还原的完整 TypeScript 源码，**可本地运行**
+# CC Recall Gate
 
 <p align="center">
-  <img src="preview.png?raw=true" alt="Claude Code CLI" width="700">
+  <img alt="Claude Code Restored" src="https://img.shields.io/badge/Claude%20Code-Restored%20Source-111111?style=for-the-badge&logo=anthropic&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Agent%20Runtime-3178C6?style=for-the-badge&logo=typescript&logoColor=white">
+  <img alt="Bun" src="https://img.shields.io/badge/Bun-%E2%89%A51.3.5-000000?style=for-the-badge&logo=bun&logoColor=white">
+  <img alt="Memory Recall Gate" src="https://img.shields.io/badge/Memory-Recall%20Gate-4B5563?style=for-the-badge">
 </p>
 
-> [!WARNING]
-> 本仓库为**非官方**版本，基于公开 npm 发布包 source map 还原，**仅供研究学习**。源码版权归 [Anthropic](https://www.anthropic.com) 所有。
+> 基于 Claude Code 还原源码的 Agent Runtime 改造项目，聚焦“记忆召回结果必须在模型决策前可用”这一核心问题。项目用途为技术交流、架构分析与 Runtime 原型验证。
 
----
+本仓库不是重新实现一个 Agent，也不是给 Claude Code 外挂一个独立记忆库；它在 Claude Code 既有 Agent Loop、Tool Calling、Auto Memory 与上下文组装机制之上，补齐“详细记忆异步召回可能晚于首轮模型调用”的控制流缺口。
 
-## 快速开始
+## 项目定位
+
+Claude Code 原有记忆链路中，Auto Memory 的详细文件召回会在每个 User Turn 启动异步预取，但通常要到工具执行之后才被消费并注入上下文。
+
+这对普通编码请求很合理，因为它不阻塞首 Token；但对“你还记得我之前说过什么”“按上次方案继续”这类强依赖历史的请求，如果首轮模型直接回答且没有 Tool Call，召回结果就可能在本 Turn 中完全没有进入主模型上下文。
+
+本项目的改造目标是：
+
+```text
+用户输入
+  ↓
+同时启动 Memory Recall Gate 与记忆预取
+  ↓
+根据当前请求对历史记忆的依赖程度选择策略
+  ↓
+在正确性、首 Token 延迟、Token 成本和上下文噪声之间做可验证权衡
+```
+
+## 基于 Claude Code 的改进
+
+| 改进点 | Claude Code 原链路 | 本项目改造 |
+|---|---|---|
+| 首轮记忆可用性 | 详细记忆预取通常在 Tool Loop 后消费；无 Tool Call 时本轮可能用不上 | 明确需要历史信息时，在本 Turn 第一次 `callModel` 前注入 Top 1～2 条记忆 |
+| 召回策略 | 以异步预取为主，优先不阻塞主模型 | 引入 `SYNC_RECALL / ASYNC_RECALL / SKIP_RECALL` 三路门控 |
+| 延迟控制 | 不等待召回，普通请求体验好，但强记忆请求可能失真 | Gate 与预取并发启动，只让强记忆请求支付同步等待成本 |
+| 资源控制 | 详细记忆最多由现有 selector 选择，后续消费时去重 | 首轮只注入高置信 Top 1～2，继续复用单文件 4KB、单会话 60KB 等预算 |
+| 失败降级 | 异步任务失败时不影响主流程 | Gate 超时/异常降级为 `ASYNC_RECALL`；同步召回失败时禁止模型伪造历史 |
+| 用户控制 | 用户可通过语义表达影响回答，但召回链路缺少显式跳过策略 | 用户明确要求忽略历史时走 `SKIP_RECALL`，取消本轮预取并阻止后续注入 |
+| 可观测性 | 召回延迟与是否真正参与首轮决策容易混在一起 | 单独度量 Gate 延迟、召回延迟、首轮记忆可用率、TTFT 变化和错误注入率 |
+
+## 核心架构
+
+```text
+User Turn
+  │
+  ├─ Memory Recall Gate
+  │    ├─ SYNC_RECALL  明确依赖历史：等待同一个预取 Promise
+  │    ├─ ASYNC_RECALL 不确定：保持异步，不阻塞首轮
+  │    └─ SKIP_RECALL  明确无关或用户禁止：取消预取
+  │
+  ├─ Relevant Memory Prefetch
+  │    ├─ 复用 Claude Code 现有 memory scan / selector
+  │    ├─ 共享 Promise、AbortController 与消费状态
+  │    └─ 遵守 readFileState、surfaced paths 与 Token 预算
+  │
+  └─ Agent Loop
+       ├─ 组装 messagesForQuery
+       ├─ 首次 callModel 前按策略注入或跳过记忆
+       ├─ 解析 Tool Call
+       ├─ 权限校验与工具执行
+       └─ 工具结果与后续异步记忆回灌
+```
+
+### 三路策略
+
+`SYNC_RECALL`：当前请求明确依赖历史信息，例如“还记得”“上次说过”“按我之前的偏好”。系统等待已经启动的记忆预取，在首次主模型调用前注入少量高置信记忆。
+
+`ASYNC_RECALL`：是否需要历史信息不确定。系统不阻塞首次模型调用，保留现有异步预取与后续 Tool Loop 回灌能力。Gate 失败、超时或返回非法结果时默认进入该分支。
+
+`SKIP_RECALL`：请求明确不需要历史，或用户显式要求忽略记忆。系统取消本 Turn 的记忆预取，并确保后续 Loop 不再消费该结果。
+
+## 设计原则
+
+第一性原理是：记忆系统的价值不等于“存得多”，而是“正确的信息在模型做决定时可用”。
+
+因此本项目坚持四个原则：
+
+1. **不重建记忆库**：复用 Claude Code 既有 Auto Memory、memory scan、selector、attachment 与预算体系。
+2. **不全量同步阻塞**：只有强历史依赖请求才等待召回，普通请求仍保持低 TTFT。
+3. **不让记忆污染上下文**：首轮只注入 Top 1～2；低置信和不确定请求继续走异步慢通路。
+4. **不伪造历史事实**：召回超时、失败或为空时，模型应知道“未找到可用记忆”，而不是编造过去内容。
+
+## 验证体系
+
+本项目不以单个 Demo 成功作为验收标准，而是用控制流测试和离线回放验证端到端收益。
+
+### 控制流测试
+
+| 场景 | 验证点 |
+|---|---|
+| Gate=`SYNC_RECALL` 且首轮无 Tool Call | 第一次 `callModel` 的 messages 已包含目标记忆 |
+| Gate=`ASYNC_RECALL` | 首次模型调用不等待记忆，后续 Loop 可消费预取结果 |
+| Gate=`SKIP_RECALL` | 预取被取消，首轮和后续轮均不注入记忆 |
+| Gate 超时或异常 | 自动降级为 `ASYNC_RECALL`，主 Loop 不被卡死 |
+| 同步召回为空或失败 | 主模型收到受控提示，不声称自己记得 |
+| 同一文件被同步和异步同时选中 | 通过 `readFileState` 与 surfaced paths 去重 |
+| 用户中断 | Gate、预取和文件读取均收到 Abort |
+
+### 对照实验
+
+```text
+A：Claude Code 原有纯异步召回
+B：所有请求都同步等待召回
+C：本项目 Gate + 并发预取 + 三路策略
+```
+
+C 组的目标不是在所有指标上压倒 A/B，而是在强记忆场景接近 B 的正确性，同时让普通请求的首 Token 延迟接近 A。
+
+### 核心指标
+
+| 指标 | 说明 |
+|---|---|
+| First-call Memory Availability | 首次主模型调用前是否已包含目标记忆 |
+| Task Accuracy | 最终回答是否正确使用历史信息 |
+| Gate Accuracy | 三路策略是否把请求路由到正确分支 |
+| False Injection Rate | 无关请求被错误注入记忆的比例 |
+| Stale-memory Error Rate | 陈旧记忆导致错误行动的比例 |
+| p50/p95 TTFT Delta | 普通请求与强记忆请求的首 Token 延迟变化 |
+| Injected Tokens | 每轮额外注入的 Token 成本 |
+| Cancel / Timeout Success Rate | 中断、超时和失败降级是否生效 |
+
+## 代码锚点
+
+| 文件 | 作用 |
+|---|---|
+| `src/query.ts` | User Turn 主循环、记忆预取启动、上下文组装、首次 `callModel`、工具后回灌 |
+| `src/utils/attachments.ts` | `MemoryPrefetch`、记忆 attachment、去重、预算与 Abort 入口 |
+| `src/memdir/findRelevantMemories.ts` | 复用现有 Sonnet selector，选择相关记忆文件 |
+| `src/memdir/memoryScan.ts` | 扫描 memory manifest，限制候选规模 |
+| `src/context.ts` | 会话级用户上下文与 CLAUDE.md / MEMORY.md 栈加载 |
+| `src/services/SessionMemory/` | Session Memory 的增量摘要写入链路 |
+| `src/services/compact/` | Compact 时读取 Session Memory 并替换历史消息 |
+
+## 运行方式
+
+环境要求：
+
+- Bun `>= 1.3.5`
+- Node.js `>= 24`
+
+安装依赖：
 
 ```bash
-bun install       # 安装依赖（需要 Bun ≥ 1.3.5、Node.js ≥ 24）
-bun run dev       # 启动 CLI
-bun run version   # 验证版本
+bun install
 ```
 
----
+启动本地 CLI：
 
-## 从源码中发现的 7 大隐藏功能
-
-通过阅读还原后的 1,987 个 TypeScript 源文件，我们发现了大量未公开的隐藏功能。这些功能通过**编译开关**（`feature()`）和**用户类型**（`USER_TYPE`）进行门控，外部发布版中大部分被裁剪。
-
----
-
-### 1. [BUDDY — AI 电子宠物](docs/01-buddy.md)
-
-> 源码位置：`src/buddy/` · [查看完整分析 →](docs/01-buddy.md)
-
-终端里的拓麻歌子！一个完整的虚拟宠物系统。
-
-- **18 种物种**：鸭子、鹅、猫、龙、章鱼、猫头鹰、企鹅、乌龟、蜗牛、幽灵、六角恐龙、水豚、仙人掌、机器人、兔子、蘑菇、果冻、胖猫
-- **5 级稀有度**：普通(60%) → 非凡(25%) → 稀有(10%) → 史诗(4%) → 传说(1%)
-- **1% 闪光概率**：独立于稀有度，任何宠物都有 1% 概率成为闪光个体
-- **确定性生成**：使用账号 UUID + 固定盐值 `'friend-2026-401'` 经 FNV-1a 哈希 → Mulberry32 PRNG，每人只会得到一只固定的宠物，改配置也没用
-- **外观系统**：6 种眼睛样式 + 8 种帽子（皇冠、巫师帽、光环等），common 稀有度没有帽子
-- **交互**：`/buddy pet` 抚摸（爱心动画）、`/buddy hatch` 孵化、`/buddy card` 查看卡片
-- **动画**：500ms 帧率的 ASCII 精灵动画，气泡对话，窄终端自动退化为表情文字脸（如 `=·ω·=`）
-- **编译开关**：`feature('BUDDY')`
-
----
-
-### 2. [KAIROS — 永不关机的 Claude](docs/02-kairos.md)
-
-> 源码位置：`src/assistant/`、`src/proactive/`、`src/services/autoDream/` · [查看完整分析 →](docs/02-kairos.md)
-
-关掉终端 Claude 还在运行的持久助手模式。
-
-- **跨会话持久运行**：通过 `.claude/settings.json` 的 `assistant: true` 激活，会话状态持久化到磁盘
-- **每日日志**：自动在 `<autoMemPath>/logs/YYYY/MM/YYYY-MM-DD.md` 记录工作日志
-- **自动做梦（Dream）**：距上次整合超 24 小时且有 5+ 新会话时，后台自动启动记忆整合子代理，分四阶段运行：Orient → Gather → Consolidate → Prune
-- **锁机制**：`.consolidate-lock` 文件 + PID 存活检查，防止多进程同时做梦
-- **主动模式（Proactive）**：没人说话时自己找活干，没活就调用 `SleepTool` 等着。接收周期性 `<tick>` 提示来检查是否有事可做
-- **后台任务**：命令超 15 秒自动丢后台，支持持久 cron 任务（`permanent: true` 不受 7 天过期限制）
-- **编译开关**：`feature('KAIROS')`、`feature('KAIROS_BRIEF')`、`feature('KAIROS_CHANNELS')`
-- **远程开关**：GrowthBook `tengu_kairos`、`tengu_onyx_plover`（Dream 阈值配置）
-
----
-
-### 3. [ULTRAPLAN — 云端深度规划](docs/03-ultraplan.md)
-
-> 源码位置：`src/commands/ultraplan.tsx`、`src/utils/ultraplan/` · [查看完整分析 →](docs/03-ultraplan.md)
-
-把难题甩给云端 Opus 独立研究最长 30 分钟。
-
-- **流程**：`/ultraplan <prompt>` → 创建远程 CCR 会话 → Opus 模型独立研究 → 后台轮询等待（30 分钟超时）→ 浏览器查看/修改方案 → 批准执行或传送回本地
-- **关键词触发**：消息中包含 "ultraplan" 自动触发，智能排除引号/路径/标识符中的误触发
-- **传送（Teleport）**：`src/utils/teleport.tsx` 实现本地 ↔ 远程会话传输，支持 Git Bundle 打包代码上下文
-- **完全内部限定**：`isEnabled: () => "external" === 'ant'`，外部版永远不可用
-- **编译开关**：`feature('ULTRAPLAN')`
-- **远程开关**：`tengu_ultraplan_model`（控制使用的模型）
-
----
-
-### 4. [Coordinator — 多 Agent 编排模式](docs/04-coordinator.md)
-
-> 源码位置：`src/coordinator/` · [查看完整分析 →](docs/04-coordinator.md)
-
-主 Claude 变成纯指挥官，Worker 并行执行任务。
-
-- **角色分离**：Coordinator 只有三个工具——派活（Agent）、通信（SendMessage）、停工（Shutdown）
-- **Worker 机制**：Worker 在独立子进程中运行，各自拥有完整工具集
-- **核心铁律**：系统提示中明确规定"禁止甩锅式委派"——不能把不清楚的需求直接丢给 Worker
-- **任务追踪**：基于文件的共享任务列表（`~/.claude/tasks/`），Coordinator 和 Worker 共同读写
-- **编译开关**：`feature('COORDINATOR_MODE')`
-- **环境变量**：`CLAUDE_CODE_COORDINATOR_MODE`
-
----
-
-### 5. [26+ 隐藏命令 & 秘密开关](docs/05-hidden-commands.md)
-
-> 源码位置：`src/commands.ts`、`src/commands/` · [查看完整分析 →](docs/05-hidden-commands.md)
-
-#### Feature-gated 命令（编译开关控制）
-
-| 命令 | 功能 | 开关 |
-|------|------|------|
-| `/buddy` | 宠物系统 | `BUDDY` |
-| `/proactive` | 主动自主模式 | `PROACTIVE` / `KAIROS` |
-| `/assistant` | 助手模式 | `KAIROS` |
-| `/brief` | 简报模式 | `KAIROS` / `KAIROS_BRIEF` |
-| `/bridge` | 远程控制桥接 | `BRIDGE_MODE` |
-| `/voice` | 语音模式 | `VOICE_MODE` |
-| `/ultraplan` | 云端深度规划 | `ULTRAPLAN` |
-| `/fork` | 子代理分叉 | `FORK_SUBAGENT` |
-| `/peers` | 对等通信 | `UDS_INBOX` |
-| `/workflows` | 工作流脚本 | `WORKFLOW_SCRIPTS` |
-| `/torch` | Torch 功能 | `TORCH` |
-| `/force-snip` | 强制历史截断 | `HISTORY_SNIP` |
-
-#### 仅内部用户（`USER_TYPE === 'ant'`）命令
-
-| 命令 | 功能 |
-|------|------|
-| `/teleport` | 传送会话到远程/本地 |
-| `/bughunter` | 内部 Bug 猎人 |
-| `/mock-limits` | 模拟速率限制 |
-| `/ctx_viz` | 上下文可视化 |
-| `/break-cache` | 强制缓存清除 |
-| `/ant-trace` | 内部追踪工具 |
-| `/good-claude` | 内部反馈 |
-| `/agents-platform` | 智能体平台 |
-| `/autofix-pr` | 自动修复 PR |
-| `/debug-tool-call` | 调试工具调用 |
-| `/reset-limits` | 重置速率限制 |
-
-#### 隐藏 CLI 参数
-
-```
---teleport [session]    恢复传送会话
---remote [description]  创建远程会话
---proactive             主动模式
---assistant             助手模式
---brief                 简报模式
---remote-control        远程控制
---hard-fail             硬失败模式
---agent-teams           多代理团队
+```bash
+bun run dev
 ```
 
----
+查看版本：
 
-### 6. [Bridge — 远程遥控终端](docs/06-bridge.md)
-
-> 源码位置：`src/bridge/`（33 个文件） · [查看完整分析 →](docs/06-bridge.md)
-
-从 claude.ai 或手机直接操控本地 CLI。
-
-- **WebSocket 实时连接**：本地 CLI 通过 WebSocket 与 claude.ai 建立双向通道
-- **完整远程控制**：远程端可以发送消息、批准权限、查看输出
-- **进程间通信**：跨 Claude 会话的消息传递机制
-- **状态同步**：`bridgeStatusUtil.ts` 实时同步运行状态
-- **权限回调**：`bridgePermissionCallbacks.ts` 远程权限审批
-- **编译开关**：`feature('BRIDGE_MODE')`、`feature('DAEMON')`
-
----
-
-### 7. [50 个编译开关 + 远程门控](docs/07-feature-gates.md)
-
-外部发布版是**阉割版**。Anthropic 通过三层门控控制功能。[查看完整分析 →](docs/07-feature-gates.md)
-
-#### 第一层：编译时开关（`feature()`，约 50 个）
-
-构建时决定代码包含/排除，以下是完整列表：
-
-<details>
-<summary>点击展开全部 50 个编译开关</summary>
-
-| 开关 | 说明 |
-|------|------|
-| `BUDDY` | 宠物伴侣系统 |
-| `KAIROS` | 持久助手模式 |
-| `KAIROS_BRIEF` | 简报模式 |
-| `KAIROS_CHANNELS` | 通道通知 |
-| `KAIROS_GITHUB_WEBHOOKS` | GitHub Webhook |
-| `ULTRAPLAN` | 云端深度规划 |
-| `COORDINATOR_MODE` | 多 Agent 编排 |
-| `BRIDGE_MODE` | 远程控制桥接 |
-| `VOICE_MODE` | 语音交互 |
-| `PROACTIVE` | 主动自主模式 |
-| `FORK_SUBAGENT` | 子代理分叉 |
-| `DAEMON` | 守护进程模式 |
-| `UDS_INBOX` | Unix Socket 收件箱 |
-| `WORKFLOW_SCRIPTS` | 工作流脚本 |
-| `TORCH` | Torch 功能 |
-| `MONITOR_TOOL` | 监控工具 |
-| `HISTORY_SNIP` | 历史截断 |
-| `ANTI_DISTILLATION_CC` | 反蒸馏保护 |
-| `BASH_CLASSIFIER` | Bash 命令分类器 |
-| `BG_SESSIONS` | 后台会话 |
-| `CACHED_MICROCOMPACT` | 缓存微压缩 |
-| `CCR_REMOTE_SETUP` | Web 远程设置 |
-| `CHICAGO_MCP` | MCP 扩展（Computer Use） |
-| `COMMIT_ATTRIBUTION` | 提交归属标注 |
-| `CONNECTOR_TEXT` | 连接器文本 |
-| `CONTEXT_COLLAPSE` | 上下文折叠 |
-| `COWORKER_TYPE_TELEMETRY` | 协作者遥测 |
-| `DOWNLOAD_USER_SETTINGS` | 下载用户设置 |
-| `EXPERIMENTAL_SKILL_SEARCH` | 实验性技能搜索 |
-| `EXTRACT_MEMORIES` | 自动提取记忆 |
-| `FILE_PERSISTENCE` | 文件持久化 |
-| `HARD_FAIL` | 硬失败模式 |
-| `LODESTONE` | Lodestone 功能 |
-| `MCP_SKILLS` | MCP 技能系统 |
-| `MEMORY_SHAPE_TELEMETRY` | 记忆形状遥测 |
-| `MESSAGE_ACTIONS` | 消息操作 |
-| `NATIVE_CLIENT_ATTESTATION` | 客户端证明 |
-| `PROMPT_CACHE_BREAK_DETECTION` | 缓存中断检测 |
-| `QUICK_SEARCH` | 快速搜索 |
-| `REACTIVE_COMPACT` | 响应式压缩 |
-| `SLOW_OPERATION_LOGGING` | 慢操作日志 |
-| `STREAMLINED_OUTPUT` | 精简输出 |
-| `TEAMMEM` | 团队记忆同步 |
-| `TEMPLATES` | 模板/分类器 |
-| `TERMINAL_PANEL` | 终端面板 |
-| `TOKEN_BUDGET` | Token 预算 |
-| `TRANSCRIPT_CLASSIFIER` | 转录分类器 |
-| `UNATTENDED_RETRY` | 无人值守重试 |
-| `UPLOAD_USER_SETTINGS` | 上传用户设置 |
-| `BREAK_CACHE_COMMAND` | 缓存清除注入 |
-
-</details>
-
-#### 第二层：用户类型（`USER_TYPE`）
-
-- **`ant`**（Anthropic 内部）— 解锁全部功能、20 分钟 GrowthBook 刷新、调试工具、200+ 处专属检查
-- **`external`**（外部用户）— 裁剪版，6 小时 GrowthBook 刷新
-
-#### 第三层：GrowthBook 远程 A/B 测试
-
-| 开关 | 控制内容 |
-|------|---------|
-| `tengu_kairos` | KAIROS 助手模式开关 |
-| `tengu_onyx_plover` | 自动做梦阈值（间隔/会话数） |
-| `tengu_cobalt_frost` | 语音识别（Nova 3）开关 |
-| `tengu_ultraplan_model` | Ultraplan 使用的模型 |
-| `tengu_ant_model_override` | 内部用户模型覆盖 |
-| `tengu_session_memory` | 会话记忆功能 |
-| `tengu_max_version_config` | 自动更新 Kill Switch |
-| `tengu_frond_boric` | 数据接收器 Kill Switch |
-| `tengu_herring_clock` | 团队记忆路径 |
-| `tengu_sm_config` | 会话记忆配置 |
-
----
-
-## 隐藏环境变量速查
-
-<details>
-<summary>点击展开完整环境变量列表</summary>
-
-| 环境变量 | 说明 |
-|----------|------|
-| `ANTHROPIC_MODEL` | 模型覆盖 |
-| `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 最大输出 token |
-| `CLAUDE_CODE_DISABLE_THINKING` | 禁用思考 |
-| `CLAUDE_CODE_PROACTIVE` | 主动模式 |
-| `CLAUDE_CODE_COORDINATOR_MODE` | 协调器模式 |
-| `CLAUDE_CODE_BRIEF` | 简报模式 |
-| `CLAUDE_CODE_USE_BEDROCK` | 使用 AWS Bedrock |
-| `CLAUDE_CODE_USE_VERTEX` | 使用 Google Vertex |
-| `CLAUDE_CODE_DISABLE_AUTO_MEMORY` | 禁用自动记忆 |
-| `CLAUDE_CODE_EXTRA_BODY` | API 附加 JSON |
-| `CLAUDE_CODE_SYNTAX_HIGHLIGHT` | 语法高亮主题 |
-| `CLAUDE_CODE_IDLE_THRESHOLD_MINUTES` | 空闲阈值（默认 75 分钟） |
-| `CLAUDE_INTERNAL_FC_OVERRIDES` | GrowthBook 覆盖（仅 ant） |
-
-</details>
-
----
-
-## 项目结构
-
-```
-src/                    # 核心源码（1,987 个 TS/TSX）
-├── tools/              # 53 个工具（Bash/FileEdit/Agent/MCP...）
-├── commands/           # 87 个斜杠命令
-├── services/           # API / MCP / analytics / autoDream
-├── components/         # 148 个终端 UI 组件（React + Ink）
-├── hooks/              # 87 个自定义 Hooks
-├── buddy/              # 宠物伴侣系统
-├── assistant/          # KAIROS 助手模式
-├── coordinator/        # 多 Agent 协调器
-├── bridge/             # 远程控制桥接（31 文件）
-├── proactive/          # 主动模式
-├── vim/                # Vim 模式引擎
-├── voice/              # 语音交互
-└── ...
-shims/                  # 原生模块兼容替代
-vendor/                 # 原生绑定源码
+```bash
+bun run version
 ```
 
----
+## 仓库结构
 
-## 数据来源
-
-- npm 包：[@anthropic-ai/claude-code](https://www.npmjs.com/package/@anthropic-ai/claude-code)
-- 还原方式：提取 `cli.js.map` 中的 `sourcesContent`
-
-## 声明
-
-- 源码版权归 [Anthropic](https://www.anthropic.com) 所有
-- 仅用于技术研究与学习，请勿用于商业用途
-- 如有侵权，请联系删除
+```text
+src/
+  query.ts                         # Agent Loop 主链路
+  utils/attachments.ts             # attachment、memory prefetch、预算与去重
+  memdir/                          # Auto Memory 扫描与相关性选择
+  services/SessionMemory/          # 会话内滚动摘要
+  services/compact/                # Compact / Resume 上下文治理
+  tools/                           # 核心工具实现
+  permissions/                     # 权限控制
+  context.ts                       # 用户上下文与项目上下文加载
+```
