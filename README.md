@@ -1,10 +1,11 @@
-# CC Recall Gate
+<h1 align="center">CC Recall Gate</h1>
 
 <p align="center">
-  <img alt="Claude Code Restored" src="https://img.shields.io/badge/Claude%20Code-Restored%20Source-111111?style=for-the-badge&logo=anthropic&logoColor=white">
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Agent%20Runtime-3178C6?style=for-the-badge&logo=typescript&logoColor=white">
-  <img alt="Bun" src="https://img.shields.io/badge/Bun-%E2%89%A51.3.5-000000?style=for-the-badge&logo=bun&logoColor=white">
-  <img alt="Memory Recall Gate" src="https://img.shields.io/badge/Memory-Recall%20Gate-4B5563?style=for-the-badge">
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-24%2B-43853D?style=flat-square&logo=node.js&logoColor=white">
+  <img alt="Bun" src="https://img.shields.io/badge/Bun-1.3.5%2B-F5EBD7?style=flat-square&logo=bun&logoColor=111111">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Agent%20Runtime-3178C6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="Claude Code" src="https://img.shields.io/badge/Claude%20Code-Restored%20Source-6B7280?style=flat-square">
+  <img alt="Memory Recall Gate" src="https://img.shields.io/badge/Memory-Recall%20Gate-64748B?style=flat-square">
 </p>
 
 > 基于 Claude Code 还原源码的 Agent Runtime 改造项目，聚焦“记忆召回结果必须在模型决策前可用”这一核心问题。项目用途为技术交流、架构分析与 Runtime 原型验证。
