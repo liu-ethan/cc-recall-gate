@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Claude Code Agent 系统 · 10 层架构全景</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #151823;
+        --line: #55585c;
+        --blue: #647fbe;
+        --blue-soft: #f2f5ff;
+        --green: #69a15d;
+        --green-soft: #f3fbef;
+        --red: #c5504b;
+        --red-soft: #fff4f2;
+        --purple: #8654d5;
+        --purple-soft: #f8f3ff;
+        --gold: #c98a16;
+        --gold-soft: #fff9e9;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #fff;
+      }
+
+      body {
+        display: grid;
+        place-items: start center;
+        font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--ink);
+      }
+
+      main {
+        width: min(100%, 1280px);
+      }
+
+      svg {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #fff;
+      }
+
+      .title {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.4px;
+      }
+
+      .zone-label {
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .box-copy {
+        font-size: 16px;
+        line-height: 1.34;
+        text-align: center;
+      }
+
+      .box-copy strong {
+        font-weight: 700;
+      }
+
+      .caption-copy {
+        font-size: 15px;
+        font-weight: 700;
+        text-align: center;
+      }
+
+      .foundation-copy {
+        font-size: 15px;
+        line-height: 1.35;
+        text-align: center;
+      }
+
+      .foundation-copy strong {
+        font-weight: 700;
+      }
+
+      .node {
+        fill: rgba(255, 255, 255, 0.94);
+        stroke-width: 1.2;
+      }
+
+      .zone {
+        stroke-width: 1.8;
+      }
+
+      .flow {
+        fill: none;
+        stroke: var(--line);
+        stroke-width: 2;
+        marker-end: url(#arrow-gray);
+      }
+
+      .flow-purple {
+        fill: none;
+        stroke: var(--purple);
+        stroke-width: 2;
+        stroke-dasharray: 6 6;
+        marker-end: url(#arrow-purple);
+      }
+
+      @media print {
+        @page {
+          size: 1280px 1015px;
+          margin: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-label="Claude Code Agent 系统 10 层架构全景图">
+      <svg viewBox="0 0 1280 1015" role="img" aria-labelledby="chart-title chart-desc">
+        <title id="chart-title">Claude Code Agent 系统 · 10 层架构全景</title>
+        <desc id="chart-desc">
+          从用户入口到输入上下文、推理执行、权限状态、多代理展示，以及贯穿所有层的沙箱与安全基础设施。
+        </desc>
+
+        <defs>
+          <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#55585c" />
+          </marker>
+          <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#8654d5" />
+          </marker>
+        </defs>
+
+        <text class="title" x="640" y="39" text-anchor="middle">Claude Code Agent 系统 · 10 层架构全景</text>
+
+        <!-- 用户入口 -->
+        <rect x="286" y="86" width="710" height="65" rx="7" fill="#dfe9fb" stroke="#6685c4" stroke-width="1.2" />
+        <text x="641" y="125" text-anchor="middle" font-size="18" font-weight="700">用户（Terminal / IDE / Web）</text>
+
+        <!-- 分区背景 -->
+        <rect class="zone" x="6" y="198" width="386" height="343" rx="18" fill="var(--blue-soft)" stroke="var(--blue)" />
+        <rect class="zone" x="6" y="571" width="386" height="184" rx="9" fill="var(--green-soft)" stroke="var(--green)" />
+        <rect class="zone" x="449" y="198" width="385" height="610" rx="18" fill="var(--red-soft)" stroke="var(--red)" />
+        <rect class="zone" x="891" y="198" width="383" height="610" rx="18" fill="var(--purple-soft)" stroke="var(--purple)" />
+
+        <!-- 分区标题 -->
+        <text class="zone-label" x="28" y="224" fill="#496cb5">A · 输入与上下文</text>
+        <text class="zone-label" x="28" y="597" fill="#4e9145">B · 推理与执行</text>
+        <text class="zone-label" x="471" y="224" fill="#a73d39">C · 权限与状态</text>
+        <text class="zone-label" x="913" y="224" fill="#7244ba">D · 展示与协作</text>
+
+        <!-- A 区 -->
+        <rect class="node" x="37" y="242" width="325" height="112" rx="9" stroke="#6d8bc8" />
+        <foreignObject x="48" y="259" width="303" height="80">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 1 层 · 交互入口层</strong><br />
+            输入采集与装配<br />
+            斜线命令 / 附件 / 粘贴图片
+          </div>
+        </foreignObject>
+
+        <rect x="37" y="383" width="325" height="112" rx="9" fill="#fff5cf" stroke="#d7b856" stroke-width="1.2" />
+        <foreignObject x="48" y="400" width="303" height="80">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 2 层 · 上下文组织层</strong><br />
+            模型到底看到什么<br />
+            System Prompt / Messages / Tools
+          </div>
+        </foreignObject>
+
+        <!-- B 区 -->
+        <rect class="node" x="37" y="613" width="325" height="111" rx="9" stroke="#78a968" />
+        <foreignObject x="48" y="631" width="303" height="78">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 3 层 · 推理与编排层</strong><br />
+            query 主循环 / plan-tool-task<br />
+            ReAct 循环 / Coordinator 模式
+          </div>
+        </foreignObject>
+
+        <!-- C 区 -->
+        <rect class="node" x="479" y="242" width="325" height="112" rx="9" stroke="#cf6964" />
+        <foreignObject x="490" y="259" width="303" height="82">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 4 层 · 权限与人机协同层</strong><br />
+            自治边界 / Human-in-the-Loop<br />
+            允许 / 拒绝 / 问用户
+          </div>
+        </foreignObject>
+
+        <rect class="node" x="479" y="383" width="325" height="112" rx="9" stroke="#cf6964" />
+        <foreignObject x="490" y="400" width="303" height="82">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 5 层 · 状态持久化层</strong><br />
+            JSONL 会话存储 / 会话恢复<br />
+            长期记忆系统
+          </div>
+        </foreignObject>
+
+        <rect class="node" x="479" y="526" width="325" height="111" rx="9" stroke="#cf6964" />
+        <foreignObject x="490" y="544" width="303" height="78">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 6 层 · 模型调用层</strong><br />
+            Prompt Cache / 重试 / 降级<br />
+            流式输出 / Token 管理
+          </div>
+        </foreignObject>
+
+        <!-- D 区 -->
+        <rect class="node" x="921" y="242" width="325" height="112" rx="9" stroke="#9763db" />
+        <foreignObject x="932" y="259" width="303" height="82">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 7 层 · 多代理接入层</strong><br />
+            MCP 协议 / Sub-Agent<br />
+            Coordinator / Worker 模式
+          </div>
+        </foreignObject>
+
+        <rect class="node" x="921" y="383" width="325" height="112" rx="9" stroke="#9763db" />
+        <foreignObject x="932" y="400" width="303" height="82">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 8 层 · UI 展示层</strong><br />
+            内部状态 → 用户体验<br />
+            进度展示 / 工具调用可视化
+          </div>
+        </foreignObject>
+
+        <rect class="node" x="921" y="526" width="325" height="111" rx="9" stroke="#9763db" />
+        <foreignObject x="932" y="544" width="303" height="79">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="box-copy">
+            <strong>第 9 层 · KAIROS 守护进程</strong><br />
+            主动助手模式 / Cron 调度<br />
+            Tick 心跳 / 主动联系用户
+          </div>
+        </foreignObject>
+
+        <!-- 控制流连线 -->
+        <path class="flow" d="M 641 151 V 176 H 199 V 241" />
+        <path class="flow" d="M 199 354 V 382" />
+        <path class="flow" d="M 199 495 V 612" />
+        <path class="flow" d="M 362 668 H 420 V 298 H 478" />
+        <path class="flow" d="M 641 354 V 382" />
+        <path class="flow" d="M 641 495 V 525" />
+        <path class="flow-purple" d="M 362 668 H 857 V 298 H 920" />
+        <path class="flow-purple" d="M 1246 298 H 1268 V 118 H 997" />
+        <path class="flow-purple" d="M 1084 354 V 382" />
+        <path class="flow-purple" d="M 1084 495 V 525" />
+
+        <!-- 分区语义总结 -->
+        <rect x="6" y="762" width="386" height="45" rx="7" fill="#f1f4ff" stroke="#6d7fc0" />
+        <foreignObject x="16" y="774" width="366" height="24">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="caption-copy">A · 模型看到了什么</div>
+        </foreignObject>
+
+        <rect x="449" y="762" width="385" height="45" rx="7" fill="#fff3f1" stroke="#c95d58" />
+        <foreignObject x="459" y="774" width="365" height="24">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="caption-copy">B+C · 怎么推进、安全运行</div>
+        </foreignObject>
+
+        <rect x="891" y="762" width="383" height="45" rx="7" fill="#f7f1ff" stroke="#8957d2" />
+        <foreignObject x="901" y="774" width="363" height="24">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="caption-copy">D · 能力扩展 + 用户体验</div>
+        </foreignObject>
+
+        <!-- E：安全基础设施 -->
+        <rect class="zone" x="6" y="825" width="1268" height="182" rx="8" fill="var(--gold-soft)" stroke="var(--gold)" />
+        <text class="zone-label" x="28" y="852" fill="#a76c08">E · 安全基础设施（贯穿所有层）</text>
+        <rect x="37" y="872" width="1209" height="111" rx="9" fill="rgba(255,255,255,.92)" stroke="#c98a16" stroke-width="1.2" />
+        <foreignObject x="58" y="899" width="1167" height="66">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="foundation-copy">
+            <strong>第 10 层 · 沙箱与安全层</strong><br />
+            权限系统 / OS 沙箱（bwrap / seatbelt）/ Prompt 注入防御<br />
+            纵深防御 · 三层独立防线 · 任意一层均可独立阻断攻击
+          </div>
+        </foreignObject>
+      </svg>
+    </main>
+  </body>
+</html>

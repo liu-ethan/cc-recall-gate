@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>核心工具实现 — 设计亮点</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #E8EEF4;
+      --sheet: #F2F6FA;
+      --ink: #1A2A3A;
+      --mute: #5A7088;
+      --line: #9BB0C4;
+      --process: #1F4E79;
+      --write: #2F6F8F;
+      --read: #2A5F52;
+      --white: #FFFFFF;
+      --max: 960px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      background-color: var(--paper);
+      background-image:
+        linear-gradient(rgba(155, 176, 196, 0.28) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(155, 176, 196, 0.28) 1px, transparent 1px);
+      background-size: 24px 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--process); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: #163a5c; }
+    a:focus-visible, button:focus-visible { outline: 2px solid var(--process); outline-offset: 3px; }
+
+    code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+    code {
+      background: rgba(31, 78, 121, 0.08);
+      padding: 0.1em 0.35em;
+      border-radius: 2px;
+      font-size: 0.825em;
+      color: var(--process);
+    }
+
+    .wrap { width: min(100% - 2.25rem, var(--max)); margin-inline: auto; }
+
+    /* ─── Nav ─── */
+    .top-bar {
+      border-bottom: 1px solid var(--line);
+      background: rgba(232, 238, 244, 0.9);
+      backdrop-filter: blur(8px);
+      padding: 0.7rem 0;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .top-bar .wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .breadcrumb {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      color: var(--mute);
+    }
+    .breadcrumb a { color: var(--mute); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--process); }
+    .breadcrumb span { color: var(--ink); }
+    .page-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 0.95rem;
+      justify-content: flex-end;
+    }
+    .page-nav a {
+      color: var(--mute);
+      text-decoration: none;
+      font-size: 0.72rem;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .page-nav a:hover { color: var(--process); }
+
+    /* ─── Hero ─── */
+    .hero { padding: 2.2rem 0 1.25rem; }
+    .hero .eyebrow {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--mute);
+      margin-bottom: 0.5rem;
+    }
+    .hero h1 {
+      margin: 0 0 0.55rem;
+      font-family: "Syne", "IBM Plex Sans", sans-serif;
+      font-size: clamp(1.85rem, 4vw, 2.55rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.12;
+    }
+    .hero .thesis {
+      margin: 0;
+      max-width: 40rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--process);
+      line-height: 1.45;
+    }
+
+    /* ─── 16:9 Blueprint ladder ─── */
+    .blueprint-frame {
+      margin: 1.35rem 0 0;
+      border: 1.5px solid var(--line);
+      background: var(--sheet);
+      position: relative;
+      overflow: hidden;
+    }
+    .blueprint-frame::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(155, 176, 196, 0.45) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(155, 176, 196, 0.45) 1px, transparent 1px);
+      background-size: 20px 20px;
+      pointer-events: none;
+    }
+    .blueprint-frame .frame-label {
+      position: absolute;
+      top: 0.65rem;
+      left: 0.85rem;
+      z-index: 2;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mute);
+      background: var(--sheet);
+      padding: 0.1rem 0.35rem;
+    }
+    .ladder-svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      position: relative;
+      z-index: 1;
+    }
+    .tier-bar {
+      fill: rgba(242, 246, 250, 0.92);
+      stroke-width: 2;
+    }
+    .tier-bar.process { stroke: var(--process); }
+    .tier-bar.write { stroke: var(--write); }
+    .tier-bar.read { stroke: var(--read); }
+    .tier-label {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .tier-label.process { fill: var(--process); }
+    .tier-label.write { fill: var(--write); }
+    .tier-label.read { fill: var(--read); }
+    .tier-meta {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 12px;
+      fill: var(--mute);
+    }
+    .tier-caption {
+      font-family: "IBM Plex Sans", sans-serif;
+      font-size: 12px;
+      fill: var(--mute);
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .tier-group { opacity: 0; animation: tier-in 0.55s ease forwards; }
+      .tier-group.t1 { animation-delay: 0.08s; }
+      .tier-group.t2 { animation-delay: 0.2s; }
+      .tier-group.t3 { animation-delay: 0.32s; }
+      @keyframes tier-in {
+        from { opacity: 0; transform: translateX(-12px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+    }
+
+    /* ─── Sections ─── */
+    section { padding: 2rem 0 0.5rem; }
+    .section-head {
+      margin-bottom: 1rem;
+    }
+    .section-head .tag {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--process);
+      margin-bottom: 0.35rem;
+    }
+    .section-head h2 {
+      margin: 0;
+      font-family: "Syne", sans-serif;
+      font-size: clamp(1.25rem, 2.5vw, 1.55rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .overview-panel {
+      background: var(--white);
+      border: 1px solid var(--line);
+      padding: 1.35rem 1.4rem 1.45rem;
+    }
+    .overview-panel .lead {
+      margin: 0 0 1rem;
+      font-size: 1.02rem;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem 1.5rem;
+    }
+    @media (max-width: 700px) {
+      .overview-grid { grid-template-columns: 1fr; }
+    }
+    .overview-block h3 {
+      margin: 0 0 0.4rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--mute);
+      font-weight: 600;
+    }
+    .overview-block p, .overview-block ul {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--mute);
+      line-height: 1.55;
+    }
+    .overview-block ul {
+      padding-left: 1.1rem;
+    }
+    .overview-block li { margin: 0.2rem 0; }
+    .overview-block li strong { color: var(--ink); font-weight: 600; }
+    .overview-block p strong { color: var(--ink); }
+
+    .boundary-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      margin-top: 1.15rem;
+      border: 1px solid var(--line);
+      background: var(--sheet);
+    }
+    @media (max-width: 800px) {
+      .boundary-strip { grid-template-columns: 1fr 1fr; }
+    }
+    .boundary-cell {
+      padding: 0.75rem 0.85rem;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .boundary-cell:nth-child(4n) { border-right: none; }
+    @media (max-width: 800px) {
+      .boundary-cell:nth-child(2n) { border-right: none; }
+    }
+    .boundary-cell .mod {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.06em;
+      color: var(--process);
+      margin-bottom: 0.2rem;
+    }
+    .boundary-cell.here {
+      background: rgba(31, 78, 121, 0.07);
+    }
+    .boundary-cell.here .mod { font-weight: 700; }
+    .boundary-cell p {
+      margin: 0;
+      font-size: 0.78rem;
+      color: var(--mute);
+      line-height: 1.4;
+    }
+
+    /* ─── Highlight cards ─── */
+    .highlight {
+      margin-top: 1.75rem;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--process);
+    }
+    .highlight.write { border-left-color: var(--write); }
+    .highlight.read { border-left-color: var(--read); }
+    .highlight-head {
+      padding: 1.1rem 1.3rem 0.85rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .highlight-head .tag {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+    }
+    .highlight.process .tag { color: var(--process); }
+    .highlight.write .tag { color: var(--write); }
+    .highlight.read .tag { color: var(--read); }
+    .highlight-head h3 {
+      margin: 0;
+      font-family: "Syne", sans-serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .triptych {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+    }
+    @media (max-width: 780px) {
+      .triptych { grid-template-columns: 1fr; }
+    }
+    .tri-col {
+      padding: 1.05rem 1.2rem 1.2rem;
+      border-right: 1px solid var(--line);
+    }
+    .tri-col:last-child { border-right: none; }
+    @media (max-width: 780px) {
+      .tri-col {
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .tri-col:last-child { border-bottom: none; }
+    }
+    .tri-col h4 {
+      margin: 0 0 0.45rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--mute);
+      font-weight: 600;
+    }
+    .tri-col p {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--mute);
+      line-height: 1.55;
+    }
+    .tri-col p strong { color: var(--ink); font-weight: 600; }
+
+    /* ─── Footer ─── */
+    .anchors {
+      margin: 2.25rem 0 1.5rem;
+      padding: 1.15rem 1.25rem;
+      border: 1px dashed var(--line);
+      background: rgba(255, 255, 255, 0.65);
+    }
+    .anchors h2 {
+      margin: 0 0 0.55rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--mute);
+      font-weight: 600;
+    }
+    .anchors ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 1.25rem;
+    }
+    .anchors li {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.78rem;
+      color: var(--process);
+    }
+
+    .site-footer {
+      border-top: 1px solid var(--line);
+      padding: 1rem 0 2rem;
+      font-size: 0.8125rem;
+      color: var(--mute);
+      background: rgba(232, 238, 244, 0.85);
+    }
+    .site-footer a { color: var(--mute); }
+    .site-footer a:hover { color: var(--process); }
+  </style>
+</head>
+<body>
+
+  <nav class="top-bar" aria-label="页面导航">
+    <div class="wrap">
+      <div class="breadcrumb">
+        <a href="index.html">学习路线</a> → <span>M6 核心工具</span>
+      </div>
+      <div class="page-nav">
+        <a href="#overview">总论</a>
+        <a href="#h1">亮点1</a>
+        <a href="#h2">亮点2</a>
+        <a href="#h3">亮点3</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">M6 · Core Tools · 设计亮点</div>
+      <h1>核心工具实现</h1>
+      <p class="thesis">价值在副作用边界怎么划、怎么守——不在参数表。</p>
+
+      <figure class="blueprint-frame" aria-label="副作用阶梯示意图，宽高比 16 比 9">
+        <span class="frame-label">Side-effect Tiers · 16:9</span>
+        <svg class="ladder-svg" viewBox="0 0 960 540" role="img" aria-labelledby="ladder-title ladder-desc">
+          <title id="ladder-title">核心工具副作用阶梯</title>
+          <desc id="ladder-desc">三条水平阶梯：进程级 Bash 最长且须确认；写盘级 FileEdit 中等可分级；只读级 Grep 与 Glob 最短可自动。</desc>
+
+          <!-- corner ticks like a drawing sheet -->
+          <path d="M24 24h28M24 24v28" fill="none" stroke="#9BB0C4" stroke-width="1.5"/>
+          <path d="M936 24h-28M936 24v28" fill="none" stroke="#9BB0C4" stroke-width="1.5"/>
+          <path d="M24 516h28M24 516v-28" fill="none" stroke="#9BB0C4" stroke-width="1.5"/>
+          <path d="M936 516h-28M936 516v-28" fill="none" stroke="#9BB0C4" stroke-width="1.5"/>
+
+          <text x="48" y="78" class="tier-caption" style="font-size:13px;letter-spacing:0.08em;">条越长 = 副作用越大 = 权限越严</text>
+
+          <g class="tier-group t1">
+            <rect class="tier-bar process" x="48" y="120" width="720" height="72" rx="0"/>
+            <text class="tier-label process" x="68" y="152">PROCESS · Bash</text>
+            <text class="tier-meta" x="68" y="174">子进程 · stdout/stderr · 超时 · 最高危</text>
+            <text class="tier-meta" x="800" y="162">须确认</text>
+          </g>
+
+          <g class="tier-group t2">
+            <rect class="tier-bar write" x="48" y="230" width="520" height="72" rx="0"/>
+            <text class="tier-label write" x="68" y="262">WRITE · FileEdit</text>
+            <text class="tier-meta" x="68" y="284">行级替换 · 冲突检测 · 写盘</text>
+            <text class="tier-meta" x="600" y="272">可分级</text>
+          </g>
+
+          <g class="tier-group t3">
+            <rect class="tier-bar read" x="48" y="340" width="340" height="72" rx="0"/>
+            <text class="tier-label read" x="68" y="372">READ · Grep / Glob</text>
+            <text class="tier-meta" x="68" y="394">路径+行号+上下文 · 尊重 ignore</text>
+            <text class="tier-meta" x="420" y="382">可自动</text>
+          </g>
+
+          <text x="48" y="470" class="tier-caption">代表工具：BashTool · FileEditTool · GrepTool / GlobTool</text>
+          <text x="48" y="494" class="tier-caption" style="fill:#1F4E79;">图纸编号 DWG-M6 · 校招口述用</text>
+        </svg>
+      </figure>
+    </div>
+  </header>
+
+  <section id="overview" aria-labelledby="overview-title">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="tag">§ 总论</div>
+        <h2 id="overview-title">先分级，再谈实现技巧</h2>
+      </div>
+
+      <div class="overview-panel">
+        <p class="lead">模型只会发 <code>tool_use</code>。系统安不安全、稳不稳，取决于工具实现如何约束副作用——而不是 schema 写了多少字段。</p>
+        <div class="overview-grid">
+          <div class="overview-block">
+            <h3>为什么需要这层</h3>
+            <p>协议（M4）只规定「工具长什么样」；真正决定<strong>能不能跑、跑坏了会怎样</strong>的，是 Bash / FileEdit / Grep 各自的实现边界。删掉这层边界，权限只能一刀切。</p>
+          </div>
+          <div class="overview-block">
+            <h3>总论结论</h3>
+            <p>先按<strong>进程 → 写盘 → 只读</strong>分级理解核心工具，再下钻 FileEdit 的冲突策略与搜索启发式。面试口述也按这个顺序，不要从参数表起讲。</p>
+          </div>
+        </div>
+
+        <div class="boundary-strip" aria-label="与相邻模块的边界">
+          <div class="boundary-cell">
+            <div class="mod">M4 协议</div>
+            <p>接口契约：name / schema / execute</p>
+          </div>
+          <div class="boundary-cell">
+            <div class="mod">M5 编排</div>
+            <p>何时并行、结果如何回灌</p>
+          </div>
+          <div class="boundary-cell here">
+            <div class="mod">M6 本页</div>
+            <p>具体工具怎么做对、副作用怎么守</p>
+          </div>
+          <div class="boundary-cell">
+            <div class="mod">M7 权限</div>
+            <p>谁批准：allow / deny / ask</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="highlights" aria-label="设计亮点">
+    <div class="wrap">
+
+      <article class="highlight process" id="h1">
+        <div class="highlight-head">
+          <div class="tag">亮点 1 · Process → Write → Read</div>
+          <h3>三种副作用边界</h3>
+        </div>
+        <div class="triptych">
+          <div class="tri-col">
+            <h4>机制</h4>
+            <p><strong>Bash</strong> 起子进程（最高危）→ <strong>FileEdit</strong> 写盘（中等）→ <strong>Grep/Glob</strong> 只读（安全）。权限随边界递减：危险操作必须确认，只读可自动执行。</p>
+          </div>
+          <div class="tri-col">
+            <h4>Tradeoff</h4>
+            <p><strong>全自动</strong>快但不可控；<strong>全询问</strong>安全但打断多。按副作用分级，是在自主性与安全之间的可解释折中——而不是拍脑袋白名单。</p>
+          </div>
+          <div class="tri-col">
+            <h4>面试答纲</h4>
+            <p><strong>结论：</strong>工具按副作用分级，权限跟着走。<br/>
+            <strong>机制：</strong>进程 / 写盘 / 只读三档。<br/>
+            <strong>代价：</strong>删掉分级 → 权限只能一刀切 → 要么烦死要么裸奔。</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="highlight write" id="h2">
+        <div class="highlight-head">
+          <div class="tag">亮点 2 · Non-destructive edit</div>
+          <h3>FileEdit 非破坏性行级编辑</h3>
+        </div>
+        <div class="triptych">
+          <div class="tri-col">
+            <h4>机制</h4>
+            <p>不是整文件覆盖，而是<strong>替换指定行范围</strong>并尽量原子提交。若文件在编辑前被外部改动，检测冲突并失败回退——<strong>不静默覆盖</strong>。</p>
+          </div>
+          <div class="tri-col">
+            <h4>Tradeoff</h4>
+            <p>换来的是<strong>正确性与可回退</strong>；代价是实现更复杂，吞吐不如一次 Write 整文件。Agent 场景里，静默损坏比多一次失败更贵。</p>
+          </div>
+          <div class="tri-col">
+            <h4>面试答纲</h4>
+            <p><strong>结论：</strong>行级编辑 + 冲突检测，防静默损坏。<br/>
+            <strong>机制：</strong>按范围替换，外部变更则失败。<br/>
+            <strong>代价：</strong>为何不总用 Write？并发/外部修改下覆盖会丢人改的内容。</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="highlight read" id="h3">
+        <div class="highlight-head">
+          <div class="tag">亮点 3 · Search before act</div>
+          <h3>搜索启发式：先探索再行动</h3>
+        </div>
+        <div class="triptych">
+          <div class="tri-col">
+            <h4>机制</h4>
+            <p><strong>Grep + Glob</strong> 让 agent 先定位再动手：返回路径、行号与上下文，并尊重 <code>.gitignore</code>。像人类开发者「先搜再改」，而不是猜路径硬闯。</p>
+          </div>
+          <div class="tri-col">
+            <h4>Tradeoff</h4>
+            <p>召回与上下文越完整，模型越不盲目；但结果会吃 <strong>token 与延迟</strong>。好的搜索工具要在「够用的上下文」和「不炸窗口」之间收束输出。</p>
+          </div>
+          <div class="tri-col">
+            <h4>面试答纲</h4>
+            <p><strong>结论：</strong>搜索是 agent 不盲目的关键。<br/>
+            <strong>机制：</strong>Glob 找文件，Grep 找内容，带行号回灌。<br/>
+            <strong>代价：</strong>没有搜索 → 只能猜路径 → 盲目试错、浪费 turn。</p>
+          </div>
+        </div>
+      </article>
+
+      <aside class="anchors" aria-label="代码锚点">
+        <h2>代码锚点（佐证，非导读）</h2>
+        <ul>
+          <li>src/tools/BashTool/</li>
+          <li>src/tools/FileEditTool/</li>
+          <li>src/tools/GrepTool/</li>
+          <li>src/tools/GlobTool/</li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <a href="index.html">← 返回学习路线</a>
+      &nbsp;·&nbsp; M6 核心工具实现 · 架构优先，禁止背参数表
+    </div>
+  </footer>
+
+</body>
+</html>

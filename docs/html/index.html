@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CC 主 Agent 模块化学习路线</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #FAFBFC;
+      --ink: #1A2332;
+      --mute: #5C6B7A;
+      --line: #D8DEE6;
+      --signal: #0B6E4F;
+      --signal-soft: #E6F3EE;
+      --signal-dim: #0B6E4F1A;
+      --star: #C45C26;
+      --white: #FFFFFF;
+      --max: 1080px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, #F0F4F7 0%, var(--paper) 160px),
+        var(--paper);
+      color: var(--ink);
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--signal); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: #08553c; }
+    a:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+
+    code, .mono {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.875em;
+    }
+
+    code {
+      background: #EEF1F4;
+      padding: 0.1em 0.35em;
+      border-radius: 2px;
+      font-size: 0.825em;
+    }
+
+    .wrap {
+      width: min(100% - 2.5rem, var(--max));
+      margin-inline: auto;
+    }
+
+    /* ——— Hero ——— */
+    .hero {
+      padding: 2.5rem 0 2rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero .eyebrow {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--mute);
+      margin-bottom: 0.6rem;
+    }
+
+    .hero h1 {
+      margin: 0 0 0.6rem;
+      font-size: clamp(1.7rem, 3.5vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.15;
+    }
+
+    .hero .lede {
+      margin: 0;
+      max-width: 38rem;
+      color: var(--mute);
+      font-size: 1.02rem;
+      line-height: 1.55;
+    }
+
+    .hero .lede strong { color: var(--ink); font-weight: 600; }
+
+    /* ——— Module Overview Strip ——— */
+    #overview { padding: 1.25rem 0 0.25rem; }
+
+    .overview-strip {
+      background: var(--white);
+      border: 1px solid var(--line);
+      padding: 1.15rem 1.25rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .overview-grid {
+      display: flex;
+      gap: 0;
+      flex-wrap: nowrap;
+      min-width: 900px;
+      align-items: center;
+    }
+
+    .ov-item {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      white-space: nowrap;
+    }
+
+    .ov-dot {
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 50%;
+      background: var(--signal);
+      flex-shrink: 0;
+    }
+
+    .ov-dot.core { background: var(--signal); }
+    .ov-dot.sup  { background: #6B8F71; }
+
+    .ov-label {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--ink);
+      margin-left: 0.4rem;
+    }
+
+    .ov-name {
+      font-size: 0.75rem;
+      color: var(--mute);
+      margin-left: 0.35rem;
+    }
+
+    .ov-connector {
+      width: 1.4rem;
+      height: 1px;
+      background: var(--line);
+      margin: 0 0.35rem;
+      flex-shrink: 0;
+    }
+
+    .ov-connector.dep {
+      border-top: 1px dashed var(--mute);
+      background: none;
+      width: 1.2rem;
+    }
+
+    .overview-legend {
+      display: flex;
+      gap: 1.25rem;
+      margin-top: 0.6rem;
+      font-size: 0.75rem;
+      color: var(--mute);
+    }
+
+    .overview-legend span {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .leg-dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .leg-dot.core { background: var(--signal); }
+    .leg-dot.sup  { background: #6B8F71; }
+
+    /* ——— Module Cards ——— */
+    #modules { padding: 2.25rem 0 0.5rem; }
+
+    .section-label {
+      margin-bottom: 1.15rem;
+    }
+
+    .section-label h2 {
+      margin: 0;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mute);
+    }
+
+    .section-label p {
+      margin: 0.2rem 0 0;
+      font-size: 0.9rem;
+      color: var(--mute);
+    }
+
+    .module-card {
+      display: grid;
+      grid-template-columns: 5.5rem 1fr;
+      gap: 0 1.5rem;
+      margin-bottom: 2rem;
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .module-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .module-card {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .module-card {
+        grid-template-columns: 1fr;
+        gap: 0.5rem 0;
+      }
+    }
+
+    .module-stamp {
+      position: relative;
+    }
+
+    .module-stamp .stamp-num {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 5.5rem;
+      font-weight: 600;
+      line-height: 0.85;
+      color: var(--ink);
+      opacity: 0.06;
+      margin-left: -0.35rem;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    @media (max-width: 680px) {
+      .module-stamp {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+      }
+      .module-stamp .stamp-num {
+        font-size: 2.5rem;
+        opacity: 0.15;
+        margin-left: 0;
+      }
+    }
+
+    .module-content {
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--signal);
+    }
+
+    .module-content.sup {
+      border-left-color: #6B8F71;
+    }
+
+    .module-header {
+      padding: 1.25rem 1.35rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .module-header h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .module-header .stars {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.8rem;
+      color: var(--star);
+      letter-spacing: 0.05em;
+    }
+
+    .module-section {
+      padding: 1.1rem 1.35rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .module-section:last-child {
+      border-bottom: none;
+    }
+
+    .module-section h4 {
+      margin: 0 0 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--mute);
+    }
+
+    .module-section p {
+      margin: 0;
+      font-size: 0.9375rem;
+      line-height: 1.65;
+      color: var(--ink);
+    }
+
+    .module-section ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .module-section ul li {
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      color: var(--ink);
+      padding: 0.25rem 0;
+      padding-left: 1.1rem;
+      position: relative;
+    }
+
+    .module-section ul li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.72rem;
+      width: 5px;
+      height: 5px;
+      background: var(--signal);
+      border-radius: 50%;
+    }
+
+    .module-section .highlight-list li {
+      border-bottom: 1px solid #F4F6F8;
+      padding: 0.55rem 0 0.55rem 1.1rem;
+    }
+
+    .module-section .highlight-list li:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .module-section .highlight-list li:first-child {
+      padding-top: 0;
+    }
+
+    .module-section .highlight-list li::before {
+      top: 0.88rem;
+    }
+
+    .module-section .takeaway-list {
+      counter-reset: takeaway;
+    }
+
+    .module-section .takeaway-list li {
+      counter-increment: takeaway;
+      padding-left: 1.6rem;
+    }
+
+    .module-section .takeaway-list li::before {
+      content: counter(takeaway) ".";
+      position: absolute;
+      left: 0;
+      top: 0.25rem;
+      width: auto;
+      height: auto;
+      background: none;
+      border-radius: 0;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.825em;
+      font-weight: 600;
+      color: var(--signal);
+    }
+
+    /* ——— Skip ——— */
+    #skip { padding: 1.5rem 0 3rem; }
+
+    .skip-panel {
+      background: var(--white);
+      border: 1px solid var(--line);
+      padding: 1.25rem 1.35rem 1.4rem;
+    }
+
+    .skip-panel h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+    }
+
+    .skip-panel > p {
+      margin: 0 0 0.85rem;
+      color: var(--mute);
+      font-size: 0.9375rem;
+    }
+
+    .skip-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+      gap: 0.5rem;
+    }
+
+    .skip-item {
+      font-size: 0.8125rem;
+      color: var(--mute);
+      border: 1px solid var(--line);
+      padding: 0.35rem 0.6rem;
+      background: #F7F8FA;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .skip-item .skip-reason {
+      font-size: 0.75rem;
+      color: #9AA4B0;
+    }
+
+    .star-legend {
+      margin: 1.5rem 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 0.45rem;
+      font-size: 0.875rem;
+      color: var(--mute);
+    }
+
+    .star-legend li {
+      display: grid;
+      grid-template-columns: 5.5rem 1fr;
+      gap: 0.75rem;
+      align-items: baseline;
+    }
+
+    .star-legend .stars {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.8125rem;
+      color: var(--star);
+    }
+
+    /* ——— Footer ——— */
+    .site-footer {
+      border-top: 1px solid var(--line);
+      padding: 1rem 0 2rem;
+      font-size: 0.8125rem;
+      color: var(--mute);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">Claude Code &middot; 主 Agent 核心 &middot; 模块化学习</div>
+      <h1>按模块拆解主 Agent 核心架构</h1>
+      <p class="lede">
+        8 个自包含知识模块，每个模块包含<strong>学什么、设计亮点、学完能说什么</strong>。
+        可作为独立 prompt 交给 AI 帮你深入总结。目标是校招时能口述主 Agent 架构，并做出 <strong>Go 语言最小复刻</strong>。
+      </p>
+    </div>
+  </header>
+
+  <section id="overview" aria-label="模块总览">
+    <div class="wrap">
+      <div class="overview-strip" tabindex="0" aria-label="8 个模块的关系总览，窄屏可横向滚动">
+        <div class="overview-grid">
+          <div class="ov-item">
+            <span class="ov-dot core"></span>
+            <span class="ov-label">M1</span>
+            <span class="ov-name">会话入口</span>
+          </div>
+          <span class="ov-connector"></span>
+          <div class="ov-item">
+            <span class="ov-dot core"></span>
+            <span class="ov-label">M2</span>
+            <span class="ov-name">Agent Loop</span>
+          </div>
+          <span class="ov-connector"></span>
+          <div class="ov-item">
+            <span class="ov-dot core"></span>
+            <span class="ov-label">M3</span>
+            <span class="ov-name">记忆上下文</span>
+          </div>
+          <span class="ov-connector"></span>
+          <div class="ov-item">
+            <span class="ov-dot core"></span>
+            <span class="ov-label">M4</span>
+            <span class="ov-name">Tool 协议</span>
+          </div>
+          <span class="ov-connector"></span>
+          <div class="ov-item">
+            <span class="ov-dot sup"></span>
+            <span class="ov-label">M5</span>
+            <span class="ov-name">工具编排</span>
+          </div>
+          <span class="ov-connector"></span>
+          <div class="ov-item">
+            <span class="ov-dot sup"></span>
+            <span class="ov-label">M6</span>
+            <span class="ov-name">核心工具</span>
+          </div>
+          <span class="ov-connector"></span>
+          <div class="ov-item">
+            <span class="ov-dot sup"></span>
+            <span class="ov-label">M7</span>
+            <span class="ov-name">权限安全</span>
+          </div>
+          <span class="ov-connector dep"></span>
+          <div class="ov-item">
+            <span class="ov-dot core"></span>
+            <span class="ov-label">M8</span>
+            <span class="ov-name">多 Agent</span>
+          </div>
+        </div>
+      </div>
+      <div class="overview-legend">
+        <span><span class="leg-dot core"></span> 不做 Go 版就讲不清</span>
+        <span><span class="leg-dot sup"></span> 做完整 demo 强烈建议</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="modules" aria-label="模块卡片">
+    <div class="wrap">
+      <div class="section-label">
+        <h2>核心模块</h2>
+        <p>每个模块完整讲清一个功能域。可独立学习，也可按 M1→M8 顺序递进。</p>
+      </div>
+
+      <!-- M1 -->
+      <article class="module-card" id="m1">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M1</div>
+        </div>
+        <div class="module-content">
+          <div class="module-header">
+            <h3>主 Agent 与会话入口</h3>
+            <span class="stars" aria-label="重要度 5 星">★★★★★</span>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>Claude Code 从命令行启动到能接收用户输入的完整链路。main.tsx 是总入口，负责按顺序装配所有依赖（认证、遥测、配置、功能开关），然后启动 Ink 框架的 REPL 界面。REPL 收到用户输入后，交给 QueryEngine 作为会话门面，由它驱动整轮对话。QueryEngine 封装了「接收输入、调主循环、持久化、通知回调」的完整流程，所有外部调用者（REPL、Bridge、SDK）都通过这同一个入口发起对话。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>启动链的顺序装配：</strong>副作用从上到下、从前到后，每个阶段有明确依赖关系。不是事件驱动，而是顺序初始化，这让启动过程可预测、可调试。</li>
+              <li><strong>QueryEngine 作为单一门面：</strong>所有外部调用者都通过 QueryEngine 进入主循环，而不是各自调用底层函数。这形成了清晰的 API 边界，换 REPL 框架或加新的入口（如 Web 端）都不影响核心。</li>
+              <li><strong>会话恢复不是「重放」而是「重建」：</strong>恢复时重建的是完整状态（消息列表、工具结果、权限决策），不是命令历史。这使得恢复后的会话可以无缝继续。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>Claude Code 的启动是顺序依赖装配过程，所有副作用在启动阶段完成，核心循环是纯净的。</li>
+              <li>QueryEngine 是会话的门面，REPL/Bridge/SDK 都通过它进入主循环，而不是各自调用底层。</li>
+              <li>会话持久化存的是状态快照，不是命令历史，所以恢复后可以无缝继续。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- M2 -->
+      <article class="module-card" id="m2">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M2</div>
+        </div>
+        <div class="module-content">
+          <div class="module-header">
+            <h3>Agent Loop 主循环</h3>
+            <span class="stars" aria-label="重要度 5 星">★★★★★</span>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>主循环是 Claude Code 的心脏。核心流程只有四步：<strong>采样</strong>（调用模型 API，传入消息历史和可用工具列表）→ <strong>解析</strong>（从流式响应中增量解析 text 和 tool_use 块）→ <strong>执行</strong>（调用对应工具的 execute 方法）→ <strong>回灌</strong>（将工具结果作为 user/tool 消息注入对话流，触发下一次采样）。循环直到模型不再调用工具，或达到停止条件（max turns 耗尽、token 预算用光、用户中断、API 错误）。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>Agent Loop 是通用模式：</strong>采样→执行→回灌→再采样，这个循环不是 Claude Code 特有的，而是所有 tool-use agent 的共性。理解这一个循环，就能理解所有 AI agent 的工作原理。</li>
+              <li><strong>流式处理的增量解析：</strong>不是等模型全部生成完再解析，而是边生成边解析。tool_use 的参数 JSON 可能在 chunk 边界被截断，解析器需要 pend 等待下一个 chunk 拼接完整。</li>
+              <li><strong>停止条件的多维度分层：</strong>有硬上限（max turns）、软上限（token budget）、用户中断、API 错误中止，每种停止的处理方式不同——有的优雅收尾，有的立即终止。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>Agent Loop = 采样 → 工具执行 → 结果回灌 → 再采样，循环直到模型不再调用工具。</li>
+              <li>流式处理的挑战在于增量解析：tool_use 参数可能在 chunk 边界被截断。</li>
+              <li>停止条件是多维度的（turn 数、token 数、用户中断、API 错误），各有不同策略。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- M3 -->
+      <article class="module-card" id="m3">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M3</div>
+        </div>
+        <div class="module-content">
+          <div class="module-header">
+            <h3>会话记忆与上下文管理</h3>
+            <span class="stars" aria-label="重要度 5 星">★★★★★</span>
+            <a href="memory-context.html" style="font-size:0.8rem;font-weight:500">深入阅读 →</a>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>AI 的上下文窗口是有限的（200K tokens），但对话可能很长。这个模块负责三个核心问题：<strong>消息如何组织</strong>（user/assistant/tool_result/system 四类标准消息，所有对话状态通过消息流完全表达）；<strong>token 用量如何追踪</strong>（系统持续估算已用 token 数，输入+输出分开计算）；<strong>窗口快满时怎么压缩</strong>（compact 机制将历史对话压缩为紧凑摘要，保留结构信息如文件路径和行号，丢弃冗余细节）。系统提示词是分层组装的：base prompt 是静态的，工具列表每 turn 更新，用户自定义规则夹在中间。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>消息即状态：</strong>一份消息拷贝就是一份完整的会话状态快照。user→assistant（含 tool_use）→tool_result→assistant，整个对话的状态通过这个循环完全表达，不需要额外的状态变量。</li>
+              <li><strong>Compact 的取舍艺术：</strong>什么该压缩、什么该保留直接影响 agent 的后续表现。策略是保留结构信息（文件路径、编辑行号）而压缩内容细节，让模型能记住「我改过哪些文件」而不是「文件里写了什么」。</li>
+              <li><strong>Prompt 分层不是简单拼接：</strong>不同层有不同优先级和更新策略。工具列表每次 turn 更新，base prompt 静态不变，用户规则居间。每层独立管理，互不干扰。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>对话状态完全通过消息流表达：user→assistant(tool_use)→tool_result→assistant，以此循环。</li>
+              <li>Token 预算到顶时触发 compact：保留结构信息，压缩内容细节，释放窗口空间。</li>
+              <li>系统提示词是分层组装的：base prompt + 工具列表 + 动态上下文，每层独立管理。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- M4 -->
+      <article class="module-card" id="m4">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M4</div>
+        </div>
+        <div class="module-content">
+          <div class="module-header">
+            <h3>Tool 协议定义</h3>
+            <span class="stars" aria-label="重要度 5 星">★★★★★</span>
+            <a href="tool-protocol.html" style="font-size:0.8rem;font-weight:500">深入阅读 →</a>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>所有工具（Bash、Read、Write、Glob、AgentTool、MCP 工具……）都遵循同一个接口协议。每个工具必须提供：<strong>name</strong>（唯一标识）、<strong>description</strong>（给模型看的自然语言说明）、<strong>inputSchema</strong>（JSON Schema 约束输入参数）、<strong>execute</strong>（核心执行逻辑，接收参数返回结果）、<strong>permission 钩子</strong>（是否需要用户确认）。模型通过 JSON Schema 理解工具的参数格式，不需要任何硬编码逻辑。新工具只需实现接口并注册，主循环代码不需要改动。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>工具即插件：</strong>所有工具是同一接口的不同实现。想加新能力？实现 Tool 接口即可，主循环代码完全不动。这是开闭原则的典范。</li>
+              <li><strong>Schema 驱动：</strong>工具的能力声明（参数名、类型、是否必填、默认值）完全通过 JSON Schema 描述。模型通过 Schema 自己理解怎么用工具，不需要任何硬编码逻辑。</li>
+              <li><strong>协议不是实现：</strong>Tool.ts 定义的是「工具应该长什么样」，具体的 Bash、Read、Write 是「某个工具的长相」。这种分离让协议本身极其简洁，但能支撑几百种工具。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>所有工具遵循同一个接口：name + description + inputSchema + execute + permission。</li>
+              <li>模型通过 JSON Schema 理解工具怎么用，不需要任何硬编码逻辑。</li>
+              <li>工具即插件：想加新能力就实现 Tool 接口，主循环代码不需要改。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- M5 -->
+      <article class="module-card" id="m5">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M5</div>
+        </div>
+        <div class="module-content sup">
+          <div class="module-header">
+            <h3>工具执行与编排</h3>
+            <span class="stars" aria-label="重要度 4 星">★★★★☆</span>
+            <a href="tool-orchestration.html" style="font-size:0.8rem;font-weight:500">深入阅读 →</a>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>模型可能在一个 turn 中请求多个工具（如「读文件 A + 搜索 B + 运行命令 C」）。系统需要决定哪些可以并行、哪些必须串行。核心策略是分析工具间的依赖关系：互相独立的并行执行，有数据依赖的串行执行。结果通过 StreamingToolExecutor 边执行边注入对话流——模型在处理前几个工具的结果时，后几个工具还在跑。所有工具错误用统一格式返回，让模型用一致的方式理解和响应。还有并发上限控制，防止同时启动过多 Bash 进程。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>「能并行就并行」的调度策略：</strong>不是按声明顺序串行等待，而是分析依赖图后最大化并行。独立的工具同时启动，大幅减少总等待时间。</li>
+              <li><strong>流式回灌：</strong>不是等所有工具都执行完再一起发给模型，而是边执行边注入结果。模型可以边看前几个工具的结果边继续思考后续行动。</li>
+              <li><strong>统一错误格式：</strong>不管什么类型的工具失败（Bash 报错、文件不存在、超时），返回给模型的错误信息格式统一，模型可以用一致的方式理解和响应。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>工具调度分析依赖关系：无依赖的并行，有依赖的串行，追求最大并发度。</li>
+              <li>结果不是等全部完成再发给模型，而是边执行边注入（流式回灌）。</li>
+              <li>所有工具错误用统一格式返回，模型看到的永远是结构化的 tool_result 消息。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- M6 -->
+      <article class="module-card" id="m6">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M6</div>
+        </div>
+        <div class="module-content sup">
+          <div class="module-header">
+            <h3>核心工具实现</h3>
+            <span class="stars" aria-label="重要度 4 星">★★★★☆</span>
+            <a href="core-tools.html" style="font-size:0.8rem;font-weight:500">深入阅读 →</a>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>挑选三个最典型的工具深入：<strong>Bash</strong>（子进程执行 shell 命令，捕获 stdout/stderr 和退出码，支持超时和目录设置，权限要求最高）；<strong>FileEdit</strong>（非破坏性的行级编辑：给定文件和行范围，原子替换，文件被外部修改时自动检测冲突并回退）；<strong>Grep</strong>（在代码库中搜索匹配内容，返回文件路径+行号+上下文，尊重 .gitignore）。它们代表三种副作用边界：进程执行（最危险）、写入磁盘（中等）、只读查询（安全）。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>三种副作用边界：</strong>进程（最危险）→ 磁盘写入（中等）→ 只读查询（安全）。权限模型根据边界分级，Bash 必须用户确认，Grep 可以自动执行。</li>
+              <li><strong>FileEdit 的非破坏性设计：</strong>不是「覆盖整个文件」，而是「替换指定行」。如果行号在编辑前被外部修改了，编辑失败并提示冲突，不会静默覆盖。</li>
+              <li><strong>搜索工具的启发式价值：</strong>Grep + Glob 让 agent 能像人类开发者一样「先搜索再行动」，而不是盲目猜测文件位置。这是 agent 不盲目的关键。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>核心工具按副作用边界分为三级：进程执行 / 磁盘写入 / 只读查询，权限逐级递减。</li>
+              <li>FileEdit 是行级非破坏性编辑：替换指定行范围，文件被外部修改时自动检测冲突。</li>
+              <li>搜索工具让 agent 能先探索代码库再行动，这是 agent 不盲目的关键。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- M7 -->
+      <article class="module-card" id="m7">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M7</div>
+        </div>
+        <div class="module-content sup">
+          <div class="module-header">
+            <h3>权限与人在回路</h3>
+            <span class="stars" aria-label="重要度 4 星">★★★★☆</span>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>Claude Code 能做的事很多（删文件、执行命令、发网络请求），不是所有操作都应该自动执行。权限系统提供 5 种模式：<strong>default</strong>（标准询问，危险操作弹窗确认）、<strong>accept-edits</strong>（自动接受编辑类操作）、<strong>auto</strong>（已信任的命令自动执行）、<strong>plan</strong>（只读模式，全部拒绝）、<strong>bypass</strong>（跳过所有确认）。每次工具执行前，useCanUseTool 钩子检查权限，返回允许/拒绝/询问。用户可以设置命令模式匹配规则（如「允许所有 git 命令」），并且每次决策会被记忆，下次相同命令不再询问，形成渐进式信任。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>人在回路：</strong>系统不会自作主张做危险操作。每次危险操作前暂停，等待人类判断。这不是限制，是安全保障。</li>
+              <li><strong>渐进式信任：</strong>从「全部询问」→用户逐步授权→越来越少的打断。信任是逐步建立的，不是一次性开关。</li>
+              <li><strong>可插拔的权限提供者：</strong>权限逻辑不是硬编码的，而是通过钩子注入。企业版可以替换为自己的权限策略。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>权限模式有 5 级：default→accept-edits→auto→plan→bypass，从最安全到最开放。</li>
+              <li>每次工具执行前经过 useCanUseTool 钩子，返回 allow/deny/ask 三种决策。</li>
+              <li>渐进式信任：用户逐步授权，系统记住决策，打断越来越少。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+      <!-- M8 -->
+      <article class="module-card" id="m8">
+        <div class="module-stamp">
+          <div class="stamp-num" aria-hidden="true">M8</div>
+        </div>
+        <div class="module-content">
+          <div class="module-header">
+            <h3>多 Agent 编排</h3>
+            <span class="stars" aria-label="重要度 5 星">★★★★★</span>
+          </div>
+          <div class="module-section">
+            <h4>学什么</h4>
+            <p>Claude Code 可以派生子代理独立完成任务。核心有两个概念：<strong>Agent-as-Tool</strong>——「派生子代理」本身被建模为一个 Tool 调用，子代理有独立上下文窗口，不受主代理 token 限制；<strong>Coordinator 模式</strong>——Commander 只有极少的工具（Agent、SendMessage、TaskStop），必须把工作委派出去，而 Worker 拥有完整工具集负责执行。Commander 负责拆解任务、编写自包含的 prompt、综合结果。Worker 看不到父对话的任何上下文，prompt 必须完全自包含。结果以 XML 格式注入主对话流。</p>
+          </div>
+          <div class="module-section">
+            <h4>设计亮点</h4>
+            <ul class="highlight-list">
+              <li><strong>Agent-as-Tool 是最优雅的抽象：</strong>把「创建子代理」建模为一个 Tool，而不是特殊的 API。子代理对主代理来说就像 Bash 或 Read 一样，只是一个工具调用。</li>
+              <li><strong>Commander 的约束是设计的力量：</strong>Coordinator 没有 Bash、没有文件编辑工具——它必须把工作委派出去。这个约束不是限制，而是强制它扮演正确的角色。</li>
+              <li><strong>Worker 看不到父对话：</strong>每个 Worker 的 prompt 必须完全自包含。这防止了上下文泄露，也迫使 Commander 给出精确指令——杜绝「甩锅式」委派。</li>
+            </ul>
+          </div>
+          <div class="module-section">
+            <h4>消化后能说什么</h4>
+            <ul class="takeaway-list">
+              <li>Agent-as-Tool：派生子代理就是一个工具调用，子代理有独立上下文窗口。</li>
+              <li>Coordinator 不直接操作代码，只做拆任务→写 prompt→综合结果，工具集被刻意限制。</li>
+              <li>Worker 的 prompt 必须完全自包含，因为 Worker 看不到父对话的任何上下文。</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section id="skip" aria-labelledby="skip-label">
+    <div class="wrap">
+      <div class="skip-panel">
+        <h2 id="skip-label">明确跳过</h2>
+        <p>这些是产品层功能，不影响核心架构理解。Go 版本第一版不要碰：</p>
+        <div class="skip-grid">
+          <div class="skip-item">Buddy 电子宠物 <span class="skip-reason">纯趣味功能</span></div>
+          <div class="skip-item">Kairos 持久助手 <span class="skip-reason">守护进程，非核心</span></div>
+          <div class="skip-item">Bridge 远程遥控 <span class="skip-reason">网络传输层</span></div>
+          <div class="skip-item">Ultraplan 云端规划 <span class="skip-reason">依赖 CCR 服务端</span></div>
+          <div class="skip-item">Login/OAuth <span class="skip-reason">认证体系</span></div>
+          <div class="skip-item">Voice 语音 <span class="skip-reason">ASR/TTS 集成</span></div>
+          <div class="skip-item">Vim 模式 <span class="skip-reason">编辑器集成</span></div>
+          <div class="skip-item">Ink UI <span class="skip-reason">React 终端框架</span></div>
+          <div class="skip-item">GrowthBook 特性开关 <span class="skip-reason">A/B 测试系统</span></div>
+          <div class="skip-item">MCP 协议 <span class="skip-reason">可作为 v2 扩展</span></div>
+        </div>
+      </div>
+
+      <ul class="star-legend" aria-label="星级含义">
+        <li><span class="stars">★★★★★</span><span>不做 Go 版就讲不清</span></li>
+        <li><span class="stars">★★★★☆</span><span>做完整 demo 强烈建议</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      每个模块可作为独立 prompt 交给 AI 深入讲解 &middot; 基于还原的 Claude Code 源码结构整理 &middot; 仅供学习
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      const cards = document.querySelectorAll('.module-card');
+
+      if (!('IntersectionObserver' in window)) {
+        cards.forEach(c => c.classList.add('visible'));
+        return;
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry, i) => {
+            if (entry.isIntersecting) {
+              setTimeout(() => {
+                entry.target.classList.add('visible');
+              }, i * 60);
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.08, rootMargin: '0px 0px -30px 0px' }
+      );
+
+      cards.forEach(c => observer.observe(c));
+    })();
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>工具执行与编排 — 设计亮点</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #FFFFFF;
+      --paper-soft: #F7F9FB;
+      --ink: #0E1A24;
+      --mute: #5A6B7A;
+      --line: #E2E8EF;
+      --line-strong: #C9D3DE;
+      --parallel: #0D8A7C;
+      --parallel-soft: #E6F6F3;
+      --serial: #C47A1A;
+      --serial-soft: #FBF3E8;
+      --max: 960px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      background: var(--paper);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--parallel); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: #0a6b60; }
+    a:focus-visible { outline: 2px solid var(--parallel); outline-offset: 3px; }
+
+    code, .mono {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    code {
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      padding: 0.08em 0.32em;
+      border-radius: 2px;
+      font-size: 0.825em;
+    }
+
+    .wrap { width: min(100% - 2.25rem, var(--max)); margin-inline: auto; }
+
+    /* ─── Top bar ─── */
+    .top-bar {
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      padding: 0.7rem 0;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .top-bar .wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .breadcrumb {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      color: var(--mute);
+    }
+    .breadcrumb a { color: var(--mute); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--parallel); }
+    .breadcrumb span { color: var(--ink); }
+    .page-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem 0.95rem;
+      justify-content: flex-end;
+    }
+    .page-nav a {
+      color: var(--mute);
+      text-decoration: none;
+      font-size: 0.72rem;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .page-nav a:hover { color: var(--parallel); }
+
+    /* ─── Screen 1: 16:9 hero figure ─── */
+    .hero-screen {
+      padding: 1.5rem 0 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-meta {
+      margin-bottom: 1rem;
+    }
+    .hero-meta .eyebrow {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--mute);
+      margin-bottom: 0.45rem;
+    }
+    .hero-meta h1 {
+      margin: 0 0 0.45rem;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: clamp(1.85rem, 4vw, 2.6rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.12;
+      font-optical-sizing: auto;
+    }
+    .hero-meta .lede {
+      margin: 0;
+      max-width: 38rem;
+      color: var(--mute);
+      font-size: 0.98rem;
+    }
+
+    .stage-16x9 {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      overflow: hidden;
+      margin-bottom: 1.25rem;
+    }
+    .stage-16x9 svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .stage-caption {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.5rem;
+      padding: 0 0 1.35rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.7rem;
+      color: var(--mute);
+    }
+    .stage-caption span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .swatch {
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 1px;
+      flex-shrink: 0;
+    }
+    .swatch.parallel { background: var(--parallel); }
+    .swatch.serial { background: var(--serial); }
+    .swatch.stream { background: var(--ink); opacity: 0.35; }
+
+    /* SVG motion */
+    @keyframes lane-fill {
+      from { stroke-dashoffset: 120; }
+      to { stroke-dashoffset: 0; }
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.35; }
+      50% { opacity: 1; }
+    }
+    @keyframes drip-in {
+      0% { opacity: 0; transform: translateY(-4px); }
+      40% { opacity: 1; }
+      100% { opacity: 0.85; transform: translateY(0); }
+    }
+    .lane-progress {
+      stroke-dasharray: 120;
+      stroke-dashoffset: 120;
+      animation: lane-fill 1.8s ease-out forwards;
+    }
+    .lane-progress.d2 { animation-delay: 0.35s; }
+    .lane-progress.d3 { animation-delay: 0.7s; }
+    .live-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+    .result-chip {
+      opacity: 0;
+      animation: drip-in 0.6s ease-out forwards;
+    }
+    .result-chip.c1 { animation-delay: 1.1s; }
+    .result-chip.c2 { animation-delay: 1.55s; }
+    .result-chip.c3 { animation-delay: 2.1s; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .lane-progress, .live-dot, .result-chip {
+        animation: none;
+        stroke-dashoffset: 0;
+        opacity: 1;
+      }
+    }
+
+    /* ─── Screen 2+: content ─── */
+    section { padding: 2.4rem 0 0.5rem; }
+    .sec-head { margin-bottom: 1.15rem; }
+    .sec-head .kicker {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--mute);
+      margin-bottom: 0.3rem;
+    }
+    .sec-head h2 {
+      margin: 0;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: clamp(1.3rem, 2.6vw, 1.65rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    .sec-head p {
+      margin: 0.45rem 0 0;
+      color: var(--mute);
+      font-size: 0.94rem;
+      max-width: 42rem;
+    }
+
+    /* Overview thesis */
+    .thesis-block {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--parallel);
+      padding: 1.35rem 1.4rem 1.45rem;
+    }
+    .thesis-block .one-liner {
+      margin: 0 0 0.85rem;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: clamp(1.15rem, 2.2vw, 1.4rem);
+      font-weight: 600;
+      line-height: 1.35;
+      letter-spacing: -0.015em;
+    }
+    .thesis-block .why {
+      margin: 0 0 1.1rem;
+      color: var(--mute);
+      font-size: 0.95rem;
+      max-width: 44rem;
+    }
+    .thesis-block .why strong { color: var(--ink); font-weight: 600; }
+
+    .flow-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem 0.15rem;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.68rem;
+      line-height: 1.3;
+      padding: 0.85rem 0.95rem;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      overflow-x: auto;
+    }
+    .flow-strip .node {
+      background: var(--paper);
+      border: 1px solid var(--line-strong);
+      padding: 0.35rem 0.55rem;
+      white-space: nowrap;
+      color: var(--ink);
+    }
+    .flow-strip .node.hot {
+      border-color: var(--parallel);
+      background: var(--parallel-soft);
+      color: var(--parallel);
+      font-weight: 600;
+    }
+    .flow-strip .arrow {
+      color: var(--line-strong);
+      padding: 0 0.15rem;
+      user-select: none;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-top: 1.1rem;
+    }
+    @media (max-width: 720px) {
+      .overview-grid { grid-template-columns: 1fr; }
+    }
+    .ov-card {
+      border: 1px solid var(--line);
+      padding: 1rem 1.05rem;
+      background: var(--paper);
+    }
+    .ov-card .ov-tag {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--parallel);
+      margin-bottom: 0.35rem;
+    }
+    .ov-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.95rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+    .ov-card p {
+      margin: 0;
+      font-size: 0.84rem;
+      color: var(--mute);
+      line-height: 1.5;
+    }
+
+    /* Point sections */
+    .point {
+      display: grid;
+      grid-template-columns: 4.5rem 1fr;
+      gap: 0 1.35rem;
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.75rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .point:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    @media (max-width: 640px) {
+      .point { grid-template-columns: 1fr; gap: 0.4rem 0; }
+    }
+    .point-num {
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 2.8rem;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--ink);
+      opacity: 0.1;
+      user-select: none;
+      margin-top: 0.15rem;
+    }
+    .point-body h3 {
+      margin: 0 0 0.5rem;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .point-body .hook {
+      margin: 0 0 0.85rem;
+      font-size: 0.98rem;
+      color: var(--ink);
+      max-width: 40rem;
+    }
+    .point-body .hook strong { font-weight: 650; }
+
+    .detail-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .detail-list li {
+      padding: 0.75rem 1rem 0.75rem 1.1rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    .detail-list li:last-child { border-bottom: none; }
+    .detail-list li strong {
+      display: block;
+      font-size: 0.78rem;
+      font-family: "IBM Plex Mono", monospace;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--parallel);
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+    }
+    .detail-list.serial-accent li strong { color: var(--serial); }
+
+    .tradeoff {
+      margin-top: 0.85rem;
+      padding: 0.85rem 1rem;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      font-size: 0.875rem;
+      color: var(--mute);
+      line-height: 1.55;
+    }
+    .tradeoff em {
+      font-style: normal;
+      font-weight: 600;
+      color: var(--ink);
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Takeaway */
+    .takeaway {
+      margin: 2.5rem 0 3rem;
+      border: 1px solid var(--line);
+      background: var(--paper-soft);
+      padding: 1.35rem 1.4rem 1.5rem;
+    }
+    .takeaway h2 {
+      margin: 0 0 0.85rem;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+    .takeaway ol {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: tk;
+    }
+    .takeaway li {
+      counter-increment: tk;
+      position: relative;
+      padding: 0.55rem 0 0.55rem 1.7rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+    .takeaway li:first-child { border-top: none; padding-top: 0; }
+    .takeaway li::before {
+      content: counter(tk) ".";
+      position: absolute;
+      left: 0;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.8em;
+      font-weight: 600;
+      color: var(--parallel);
+    }
+
+    .site-footer {
+      border-top: 1px solid var(--line);
+      padding: 1rem 0 2rem;
+      font-size: 0.8rem;
+      color: var(--mute);
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="top-bar" aria-label="页面导航">
+    <div class="wrap">
+      <div class="breadcrumb">
+        <a href="index.html">学习路线</a> / <span>M5 工具执行与编排</span>
+      </div>
+      <div class="page-nav">
+        <a href="#overview">总体</a>
+        <a href="#p1">并行调度</a>
+        <a href="#p2">流式回灌</a>
+        <a href="#p3">错误与上限</a>
+        <a href="#say">能说什么</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══ Screen 1: 16:9 ═══ -->
+  <header class="hero-screen">
+    <div class="wrap">
+      <div class="hero-meta">
+        <div class="eyebrow">Claude Code · M5 · 设计亮点</div>
+        <h1>工具执行与编排</h1>
+        <p class="lede">一轮里模型可能同时要读文件、搜代码、跑命令——Runtime 的工作不是「按顺序等」，而是决定谁能并行、结果何时回灌、失败怎么统一表达。</p>
+      </div>
+
+      <figure class="stage-16x9" aria-label="工具并行调度与流式回灌示意图，宽高比 16:9">
+        <svg viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg" role="img">
+          <title>并行泳道执行，结果逐条流入消息流</title>
+          <desc>左侧三条工具泳道错峰完成；右侧消息流按完成顺序接收 tool_result。</desc>
+
+          <!-- soft grid -->
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8EF" stroke-width="1"/>
+            </pattern>
+            <linearGradient id="laneGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#0D8A7C" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="#0D8A7C" stop-opacity="0.55"/>
+            </linearGradient>
+          </defs>
+          <rect width="960" height="540" fill="#F7F9FB"/>
+          <rect width="960" height="540" fill="url(#grid)"/>
+
+          <!-- left panel label -->
+          <text x="48" y="52" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.5" fill="#5A6B7A">SCHEDULE · 依赖图调度</text>
+          <text x="48" y="78" font-family="Fraunces, Georgia, serif" font-size="22" font-weight="600" fill="#0E1A24">同一 turn，三条泳道</text>
+
+          <!-- lane tracks -->
+          <!-- Lane A: Read — parallel, finishes first -->
+          <text x="48" y="130" font-family="IBM Plex Mono, monospace" font-size="12" fill="#0D8A7C" font-weight="600">A  Read</text>
+          <rect x="48" y="140" width="420" height="28" rx="2" fill="#FFFFFF" stroke="#C9D3DE"/>
+          <rect x="48" y="140" width="280" height="28" rx="2" fill="url(#laneGrad)"/>
+          <line class="lane-progress" x1="48" y1="154" x2="328" y2="154" stroke="#0D8A7C" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="live-dot" cx="328" cy="154" r="4" fill="#0D8A7C"/>
+          <text x="340" y="158" font-family="IBM Plex Mono, monospace" font-size="10" fill="#5A6B7A">done · t1</text>
+
+          <!-- Lane B: Grep — parallel, mid -->
+          <text x="48" y="210" font-family="IBM Plex Mono, monospace" font-size="12" fill="#0D8A7C" font-weight="600">B  Grep</text>
+          <rect x="48" y="220" width="420" height="28" rx="2" fill="#FFFFFF" stroke="#C9D3DE"/>
+          <rect x="48" y="220" width="340" height="28" rx="2" fill="url(#laneGrad)"/>
+          <line class="lane-progress d2" x1="48" y1="234" x2="388" y2="234" stroke="#0D8A7C" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="live-dot" cx="388" cy="234" r="4" fill="#0D8A7C" style="animation-delay:0.3s"/>
+          <text x="400" y="238" font-family="IBM Plex Mono, monospace" font-size="10" fill="#5A6B7A">done · t2</text>
+
+          <!-- Lane C: Bash — serial-ish / longer, amber hint for bottleneck -->
+          <text x="48" y="290" font-family="IBM Plex Mono, monospace" font-size="12" fill="#C47A1A" font-weight="600">C  Bash</text>
+          <rect x="48" y="300" width="420" height="28" rx="2" fill="#FFFFFF" stroke="#C9D3DE"/>
+          <rect x="48" y="300" width="400" height="28" rx="2" fill="#FBF3E8"/>
+          <line class="lane-progress d3" x1="48" y1="314" x2="448" y2="314" stroke="#C47A1A" stroke-width="2.5" stroke-linecap="round"/>
+          <circle class="live-dot" cx="448" cy="314" r="4" fill="#C47A1A" style="animation-delay:0.6s"/>
+          <text x="48" y="350" font-family="IBM Plex Mono, monospace" font-size="10" fill="#C47A1A">无数据依赖 → 可与 A/B 并行；耗时长 → 决定总等待</text>
+
+          <!-- divider -->
+          <line x1="520" y1="100" x2="520" y2="420" stroke="#E2E8EF" stroke-width="1" stroke-dasharray="4 6"/>
+
+          <!-- right: message stream -->
+          <text x="560" y="52" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.5" fill="#5A6B7A">STREAM · 边执行边注入</text>
+          <text x="560" y="78" font-family="Fraunces, Georgia, serif" font-size="22" font-weight="600" fill="#0E1A24">消息流不等齐</text>
+
+          <!-- message rail -->
+          <rect x="560" y="120" width="352" height="280" rx="2" fill="#FFFFFF" stroke="#E2E8EF"/>
+          <text x="576" y="148" font-family="IBM Plex Mono, monospace" font-size="10" fill="#5A6B7A">assistant · tool_use ×3</text>
+          <rect x="576" y="158" width="320" height="22" rx="1" fill="#F7F9FB" stroke="#E2E8EF"/>
+
+          <!-- streaming results appearing in completion order -->
+          <g class="result-chip c1">
+            <rect x="576" y="198" width="320" height="36" rx="1" fill="#E6F6F3" stroke="#0D8A7C"/>
+            <text x="588" y="220" font-family="IBM Plex Mono, monospace" font-size="11" fill="#0D8A7C" font-weight="600">tool_result · A  Read</text>
+          </g>
+          <g class="result-chip c2">
+            <rect x="576" y="246" width="320" height="36" rx="1" fill="#E6F6F3" stroke="#0D8A7C"/>
+            <text x="588" y="268" font-family="IBM Plex Mono, monospace" font-size="11" fill="#0D8A7C" font-weight="600">tool_result · B  Grep</text>
+          </g>
+          <g class="result-chip c3">
+            <rect x="576" y="294" width="320" height="36" rx="1" fill="#FBF3E8" stroke="#C47A1A"/>
+            <text x="588" y="316" font-family="IBM Plex Mono, monospace" font-size="11" fill="#C47A1A" font-weight="600">tool_result · C  Bash</text>
+          </g>
+          <text x="576" y="370" font-family="IBM Plex Mono, monospace" font-size="10" fill="#5A6B7A">先完成的先回灌 · 不阻塞后续采样准备</text>
+
+          <!-- bottom thesis bar -->
+          <rect x="0" y="460" width="960" height="80" fill="#FFFFFF"/>
+          <line x1="0" y1="460" x2="960" y2="460" stroke="#E2E8EF"/>
+          <text x="48" y="498" font-family="Fraunces, Georgia, serif" font-size="18" font-weight="600" fill="#0E1A24">删掉编排层会怎样？</text>
+          <text x="48" y="522" font-family="IBM Plex Sans, sans-serif" font-size="13" fill="#5A6B7A">全部串行 → 延迟线性叠加；等齐再回灌 → 模型空等；错误格式分裂 → 模型无法统一纠错。</text>
+        </svg>
+      </figure>
+
+      <div class="stage-caption" aria-hidden="true">
+        <span><i class="swatch parallel"></i> 可并行（无依赖）</span>
+        <span><i class="swatch serial"></i> 长耗时 / 瓶颈工具</span>
+        <span><i class="swatch stream"></i> 按完成序流式回灌</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ Screen 2: Overview ═══ -->
+  <section id="overview" aria-labelledby="overview-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">先总体</div>
+        <h2 id="overview-title">编排层解决什么问题</h2>
+        <p>协议定义「工具长什么样」；编排定义「一轮里多个工具怎么跑、结果怎么回到 Loop」。</p>
+      </div>
+
+      <div class="thesis-block">
+        <p class="one-liner">工具编排 = 依赖感知的调度器 + 流式回灌通道 + 统一失败契约。</p>
+        <p class="why">
+          模型常在一个 turn 里发出多个 <code>tool_use</code>（读 A + 搜 B + 跑 C）。
+          若<strong>一律串行</strong>，总延迟是各工具之和；若<strong>盲目全并行</strong>，有写依赖时会竞态。
+          编排层的第一性原理：在正确性约束下最大化并发，并把结果尽早变成下一轮上下文。
+        </p>
+
+        <div class="flow-strip" aria-label="控制流中的位置">
+          <span class="node">采样</span>
+          <span class="arrow">→</span>
+          <span class="node">解析 tool_use</span>
+          <span class="arrow">→</span>
+          <span class="node">权限</span>
+          <span class="arrow">→</span>
+          <span class="node hot">编排 · 执行</span>
+          <span class="arrow">→</span>
+          <span class="node hot">流式回灌</span>
+          <span class="arrow">→</span>
+          <span class="node">再采样</span>
+        </div>
+
+        <div class="overview-grid">
+          <div class="ov-card">
+            <div class="ov-tag">亮点 01</div>
+            <h3>能并行就并行</h3>
+            <p>分析工具间依赖：独立的同时启动，有数据依赖的串行，追求最大并发度。</p>
+          </div>
+          <div class="ov-card">
+            <div class="ov-tag">亮点 02</div>
+            <h3>流式回灌</h3>
+            <p>不靠「全部完成再打包」；谁先结束谁先注入消息流，缩短空等。</p>
+          </div>
+          <div class="ov-card">
+            <div class="ov-tag">亮点 03</div>
+            <h3>统一错误 + 上限</h3>
+            <p>失败形态归一成结构化 tool_result；并发有天花板，防止进程风暴。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Screen 3+: Points ═══ -->
+  <section id="points" aria-labelledby="points-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="kicker">后分点</div>
+        <h2 id="points-title">三个设计亮点</h2>
+        <p>每个亮点按「机制 → 删掉会坏在哪 → tradeoff」收束，方便面试口述。</p>
+      </div>
+
+      <article class="point" id="p1">
+        <div class="point-num" aria-hidden="true">01</div>
+        <div class="point-body">
+          <h3>「能并行就并行」的调度策略</h3>
+          <p class="hook">不是按声明顺序串行等待，而是<strong>看依赖图再最大化并行</strong>。独立工具同时启动，总等待时间接近「最慢那条泳道」，而不是「所有泳道之和」。</p>
+          <ul class="detail-list">
+            <li>
+              <strong>输入语义</strong>
+              本 turn 的一组 tool_use：各自要读什么、写什么、是否互斥（例如两个 Write 打同一文件）。
+            </li>
+            <li>
+              <strong>调度规则</strong>
+              无数据依赖 → 并行；有依赖 / 冲突 → 串行或排队。目标是正确前提下的最大并发度。
+            </li>
+            <li>
+              <strong>删掉会怎样</strong>
+              全串行：多工具 turn 延迟线性叠加，体感「Agent 很慢」；全盲目并行：写冲突、脏读，正确性崩。
+            </li>
+          </ul>
+          <div class="tradeoff">
+            <em>Tradeoff</em>
+            延迟 vs 正确性：并行度越高越快，但对依赖分析的要求越高。保守策略（宁可多串行）更安全，激进策略更吃依赖图质量。
+          </div>
+        </div>
+      </article>
+
+      <article class="point" id="p2">
+        <div class="point-num" aria-hidden="true">02</div>
+        <div class="point-body">
+          <h3>流式回灌：边执行边注入</h3>
+          <p class="hook">结果不是等所有工具跑完再一起发给模型，而是通过类似 <code>StreamingToolExecutor</code> 的通道——<strong>谁先完成，谁先变成 tool_result 消息</strong>。</p>
+          <ul class="detail-list">
+            <li>
+              <strong>机制</strong>
+              工具在后台跑；完成事件触发结果写入对话流。模型侧看到的是按完成序到达的结构化结果，而不是「批次包」。
+            </li>
+            <li>
+              <strong>收益</strong>
+              长耗时工具（如 Bash）不再拖死短工具的结果可见性；后续采样准备可以更早开始，降低端到端空等。
+            </li>
+            <li>
+              <strong>删掉会怎样</strong>
+              等齐再回灌：最慢工具决定整批可见时刻，短工具的结果被无谓扣留，turn 延迟被人为拉长。
+            </li>
+          </ul>
+          <div class="tradeoff">
+            <em>Tradeoff</em>
+            吞吐 vs 批次一致性：流式回灌更快，但模型看到的结果顺序可能与 tool_use 声明顺序不同——协议层必须保证「用 tool_use_id 对齐」，而不是靠数组下标。
+          </div>
+        </div>
+      </article>
+
+      <article class="point" id="p3">
+        <div class="point-num" aria-hidden="true">03</div>
+        <div class="point-body">
+          <h3>统一错误格式 + 并发上限</h3>
+          <p class="hook">不管 Bash 报错、文件不存在还是超时，回给模型的都是<strong>同一种结构化 tool_result</strong>；同时用并发上限防止一次 turn 打爆本机进程。</p>
+          <ul class="detail-list serial-accent">
+            <li>
+              <strong>统一失败契约</strong>
+              错误是给模型看的控制信号，不是给人看的堆栈。格式统一，模型才能用同一套策略重试、换工具或向用户澄清。
+            </li>
+            <li>
+              <strong>并发天花板</strong>
+              可并行 ≠ 无限并行。同时拉起过多 Bash/子进程会拖垮机器；编排层要有 in-flight 上限与排队。
+            </li>
+            <li>
+              <strong>删掉会怎样</strong>
+              错误形态分裂 → 模型纠错不稳定；无上限 → 资源风暴，稳定性指标先崩，再谈智能。
+            </li>
+          </ul>
+          <div class="tradeoff">
+            <em>Tradeoff</em>
+            自主性 vs 稳定性：提高并发上限能缩短尾延迟，但抬高机器负载与失败率。面试口径：上限是可度量旋钮（p95 延迟、进程数、OOM 率），不是拍脑袋常数。
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <aside class="takeaway" id="say" aria-labelledby="say-title">
+      <h2 id="say-title">消化后能说什么</h2>
+      <ol>
+        <li>工具调度分析依赖关系：无依赖并行、有依赖串行，追求最大并发度。</li>
+        <li>结果不是等全部完成再发给模型，而是边执行边注入（流式回灌）。</li>
+        <li>所有工具错误用统一格式返回；并发有上限，防止同时启动过多危险进程。</li>
+      </ol>
+    </aside>
+  </div>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      M5 工具执行与编排 · 基于 Claude Code 主 Agent 学习路线 ·
+      <a href="index.html">返回总览</a> ·
+      <a href="tool-protocol.html">上一模块：Tool 协议</a>
+    </div>
+  </footer>
+
+</body>
+</html>
