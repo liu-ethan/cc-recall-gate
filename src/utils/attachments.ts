@@ -2549,6 +2549,48 @@ export function filterDuplicateMemoryAttachments(
     .filter((a): a is Attachment => a !== null)
 }
 
+function limitRelevantMemoryAttachments(
+  attachments: Attachment[],
+  limitMemories: number | undefined,
+): Attachment[] {
+  if (limitMemories === undefined) return attachments
+
+  return attachments
+    .map(attachment => {
+      if (attachment.type !== 'relevant_memories') return attachment
+      const memories = attachment.memories.slice(0, limitMemories)
+      return memories.length > 0 ? { ...attachment, memories } : null
+    })
+    .filter((a): a is Attachment => a !== null)
+}
+
+export async function consumeRelevantMemoryPrefetch(
+  prefetch: MemoryPrefetch | undefined,
+  readFileState: FileStateCache,
+  iteration: number,
+  options: { limitMemories?: number } = {},
+): Promise<Attachment[]> {
+  if (
+    !prefetch ||
+    prefetch.skipped ||
+    prefetch.consumedOnIteration !== -1
+  ) {
+    return []
+  }
+
+  const attachments = limitRelevantMemoryAttachments(
+    await prefetch.promise,
+    options.limitMemories,
+  )
+  const filteredAttachments = filterDuplicateMemoryAttachments(
+    attachments,
+    readFileState,
+  )
+
+  prefetch.consumedOnIteration = iteration
+  return filteredAttachments
+}
+
 /**
  * Processes skill directories that were discovered during file operations.
  * Uses dynamicSkillDirTriggers field from ToolUseContext

@@ -57,6 +57,7 @@ import {
 import { generateToolUseSummary } from './services/toolUseSummary/toolUseSummaryGenerator.js'
 import { prependUserContext, appendSystemContext } from './utils/api.js'
 import {
+  consumeRelevantMemoryPrefetch,
   createAttachmentMessage,
   filterDuplicateMemoryAttachments,
   getAttachmentMessages,
@@ -102,6 +103,7 @@ import { handleStopHooks } from './query/stopHooks.js'
 import { buildQueryConfig } from './query/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
+import { decideRecallPolicy } from './memdir/recallPolicy.js'
 import { feature } from 'bun:bundle'
 import {
   getCurrentTurnTokenBudget,
@@ -302,6 +304,15 @@ async function* queryLoop(
     state.messages,
     state.toolUseContext,
   )
+  const pendingRecallPolicy = decideRecallPolicy({
+    messages: state.messages,
+    signal: state.toolUseContext.abortController.signal,
+  }).catch(() => ({
+    policy: 'ASYNC_RECALL' as const,
+    reason: 'gate_error',
+  }))
+  let recallPolicyResult: Awaited<typeof pendingRecallPolicy> | undefined
+  let hasHandledInitialRecallPolicy = false
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -654,6 +665,30 @@ async function* queryLoop(
       while (attemptWithFallback) {
         attemptWithFallback = false
         try {
+          recallPolicyResult ??= await pendingRecallPolicy
+          if (!hasHandledInitialRecallPolicy) {
+            hasHandledInitialRecallPolicy = true
+            if (recallPolicyResult.policy === 'SYNC_RECALL') {
+              const memoryAttachments = await consumeRelevantMemoryPrefetch(
+                pendingMemoryPrefetch,
+                toolUseContext.readFileState,
+                turnCount - 1,
+                { limitMemories: 2 },
+              )
+              if (memoryAttachments.length > 0) {
+                messagesForQuery = [
+                  ...messagesForQuery,
+                  ...memoryAttachments.map(createAttachmentMessage),
+                ]
+                toolUseContext = {
+                  ...toolUseContext,
+                  messages: messagesForQuery,
+                }
+              }
+            } else if (recallPolicyResult.policy === 'SKIP_RECALL') {
+              pendingMemoryPrefetch?.abort('skip_recall')
+            }
+          }
           let streamingFallbackOccured = false
           queryCheckpoint('query_api_streaming_start')
           for await (const message of deps.callModel({
