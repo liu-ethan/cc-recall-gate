@@ -38,6 +38,28 @@ function memoryPrefetch(
 }
 
 describe('consumeRelevantMemoryPrefetch', () => {
+  it('consumes all settled memories when no sync limit is requested', async () => {
+    const readFileState = createFileStateCacheWithSizeLimit(100)
+    const prefetch = memoryPrefetch(relevantMemories(3))
+
+    const attachments = await consumeRelevantMemoryPrefetch(
+      prefetch,
+      readFileState,
+      1,
+    )
+
+    expect(attachments).toHaveLength(1)
+    expect(attachments[0]).toMatchObject({
+      type: 'relevant_memories',
+      memories: [
+        { path: '/memory/1.md' },
+        { path: '/memory/2.md' },
+        { path: '/memory/3.md' },
+      ],
+    })
+    expect(prefetch.consumedOnIteration).toBe(1)
+  })
+
   it('limits SYNC_RECALL consumption to the top memories', async () => {
     const readFileState = createFileStateCacheWithSizeLimit(100)
     const prefetch = memoryPrefetch(relevantMemories(5))

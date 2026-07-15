@@ -59,7 +59,6 @@ import { prependUserContext, appendSystemContext } from './utils/api.js'
 import {
   consumeRelevantMemoryPrefetch,
   createAttachmentMessage,
-  filterDuplicateMemoryAttachments,
   getAttachmentMessages,
   startRelevantMemoryPrefetch,
 } from './utils/attachments.js'
@@ -1637,16 +1636,16 @@ async function* queryLoop(
       pendingMemoryPrefetch.settledAt !== null &&
       pendingMemoryPrefetch.consumedOnIteration === -1
     ) {
-      const memoryAttachments = filterDuplicateMemoryAttachments(
-        await pendingMemoryPrefetch.promise,
+      const memoryAttachments = await consumeRelevantMemoryPrefetch(
+        pendingMemoryPrefetch,
         toolUseContext.readFileState,
+        turnCount - 1,
       )
       for (const memAttachment of memoryAttachments) {
         const msg = createAttachmentMessage(memAttachment)
         yield msg
         toolResults.push(msg)
       }
-      pendingMemoryPrefetch.consumedOnIteration = turnCount - 1
     }
 
 
