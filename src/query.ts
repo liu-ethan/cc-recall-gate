@@ -19,6 +19,7 @@ const contextCollapse = feature('CONTEXT_COLLAPSE')
   ? (require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
+const SYNC_MEMORY_WAIT_TIMEOUT_MS = 1000
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -303,13 +304,23 @@ async function* queryLoop(
     state.messages,
     state.toolUseContext,
   )
+  const recallPolicyGateStartedAt = Date.now()
+  let recallPolicyGateLatencyMs: number | undefined
   const pendingRecallPolicy = decideRecallPolicy({
     messages: state.messages,
     signal: state.toolUseContext.abortController.signal,
-  }).catch(() => ({
-    policy: 'ASYNC_RECALL' as const,
-    reason: 'gate_error',
-  }))
+  })
+    .then(result => {
+      recallPolicyGateLatencyMs = Date.now() - recallPolicyGateStartedAt
+      return result
+    })
+    .catch(() => {
+      recallPolicyGateLatencyMs = Date.now() - recallPolicyGateStartedAt
+      return {
+        policy: 'ASYNC_RECALL' as const,
+        reason: 'gate_error',
+      }
+    })
   let recallPolicyResult: Awaited<typeof pendingRecallPolicy> | undefined
   let hasHandledInitialRecallPolicy = false
 
@@ -667,13 +678,32 @@ async function* queryLoop(
           recallPolicyResult ??= await pendingRecallPolicy
           if (!hasHandledInitialRecallPolicy) {
             hasHandledInitialRecallPolicy = true
+            let syncMemoryWaitMs = 0
+            let syncMemoryInjectedCount = 0
+            let syncMemoryTimeout = false
             if (recallPolicyResult.policy === 'SYNC_RECALL') {
+              const syncMemoryWaitStartedAt = Date.now()
               const memoryAttachments = await consumeRelevantMemoryPrefetch(
                 pendingMemoryPrefetch,
                 toolUseContext.readFileState,
                 turnCount - 1,
-                { limitMemories: 2, timeoutMs: 1000 },
+                {
+                  limitMemories: 2,
+                  timeoutMs: SYNC_MEMORY_WAIT_TIMEOUT_MS,
+                },
               )
+              syncMemoryWaitMs = Date.now() - syncMemoryWaitStartedAt
+              syncMemoryInjectedCount = memoryAttachments.reduce(
+                (count, attachment) =>
+                  attachment.type === 'relevant_memories'
+                    ? count + attachment.memories.length
+                    : count,
+                0,
+              )
+              syncMemoryTimeout =
+                pendingMemoryPrefetch !== undefined &&
+                pendingMemoryPrefetch.consumedOnIteration === -1 &&
+                syncMemoryWaitMs >= SYNC_MEMORY_WAIT_TIMEOUT_MS
               if (memoryAttachments.length > 0) {
                 messagesForQuery = [
                   ...messagesForQuery,
@@ -687,6 +717,19 @@ async function* queryLoop(
             } else if (recallPolicyResult.policy === 'SKIP_RECALL') {
               pendingMemoryPrefetch?.abort('skip_recall')
             }
+            logEvent('tengu_memdir_recall_policy', {
+              recall_policy: recallPolicyResult.policy,
+              gate_latency_ms:
+                recallPolicyGateLatencyMs ??
+                Date.now() - recallPolicyGateStartedAt,
+              gate_reason: recallPolicyResult.reason,
+              sync_memory_wait_ms: syncMemoryWaitMs,
+              sync_memory_injected_count: syncMemoryInjectedCount,
+              sync_memory_timeout: syncMemoryTimeout,
+              prefetch_skipped: pendingMemoryPrefetch?.skipped ?? false,
+              prefetch_consumed_on_iteration:
+                pendingMemoryPrefetch?.consumedOnIteration ?? -1,
+            })
           }
           let streamingFallbackOccured = false
           queryCheckpoint('query_api_streaming_start')
