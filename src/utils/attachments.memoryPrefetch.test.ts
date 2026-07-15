@@ -119,4 +119,39 @@ describe('consumeRelevantMemoryPrefetch', () => {
     expect(skipped.consumedOnIteration).toBe(-1)
     expect(consumed.consumedOnIteration).toBe(0)
   })
+
+  it('times out sync memory consumption without marking the prefetch consumed', async () => {
+    const readFileState = createFileStateCacheWithSizeLimit(100)
+    const prefetch = memoryPrefetch([], {
+      promise: new Promise(() => {}),
+      settledAt: null,
+    })
+
+    const attachments = await consumeRelevantMemoryPrefetch(
+      prefetch,
+      readFileState,
+      0,
+      { limitMemories: 2, timeoutMs: 1 },
+    )
+
+    expect(attachments).toEqual([])
+    expect(prefetch.consumedOnIteration).toBe(-1)
+  })
+
+  it('swallows rejected memory prefetch promises and continues', async () => {
+    const readFileState = createFileStateCacheWithSizeLimit(100)
+    const prefetch = memoryPrefetch([], {
+      promise: Promise.reject(new Error('prefetch failed')),
+    })
+
+    const attachments = await consumeRelevantMemoryPrefetch(
+      prefetch,
+      readFileState,
+      0,
+      { limitMemories: 2 },
+    )
+
+    expect(attachments).toEqual([])
+    expect(prefetch.consumedOnIteration).toBe(0)
+  })
 })

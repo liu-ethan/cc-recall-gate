@@ -672,7 +672,7 @@ async function* queryLoop(
                 pendingMemoryPrefetch,
                 toolUseContext.readFileState,
                 turnCount - 1,
-                { limitMemories: 2 },
+                { limitMemories: 2, timeoutMs: 1000 },
               )
               if (memoryAttachments.length > 0) {
                 messagesForQuery = [

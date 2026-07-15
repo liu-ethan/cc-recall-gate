@@ -2564,11 +2564,30 @@ function limitRelevantMemoryAttachments(
     .filter((a): a is Attachment => a !== null)
 }
 
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  return Promise.race([
+    promise,
+    new Promise<T>(resolve => {
+      timeoutId = setTimeout(() => resolve(fallback), ms)
+    }),
+  ]).finally(() => {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
+    }
+  })
+}
+
 export async function consumeRelevantMemoryPrefetch(
   prefetch: MemoryPrefetch | undefined,
   readFileState: FileStateCache,
   iteration: number,
-  options: { limitMemories?: number } = {},
+  options: { limitMemories?: number; timeoutMs?: number } = {},
 ): Promise<Attachment[]> {
   if (
     !prefetch ||
@@ -2578,8 +2597,33 @@ export async function consumeRelevantMemoryPrefetch(
     return []
   }
 
+  const timedOut = Symbol('memory_prefetch_timeout')
+  const prefetchedAttachments =
+    options.timeoutMs === undefined
+      ? await prefetch.promise.catch(e => {
+          logError(e)
+          logEvent('tengu_memdir_prefetch_consume_error', {})
+          return []
+        })
+      : await withTimeout<Attachment[] | typeof timedOut>(
+          prefetch.promise.catch(e => {
+            logError(e)
+            logEvent('tengu_memdir_prefetch_consume_error', {})
+            return []
+          }),
+          options.timeoutMs,
+          timedOut,
+        )
+
+  if (prefetchedAttachments === timedOut) {
+    logEvent('tengu_memdir_prefetch_sync_timeout', {
+      timeout_ms: options.timeoutMs,
+    })
+    return []
+  }
+
   const attachments = limitRelevantMemoryAttachments(
-    await prefetch.promise,
+    prefetchedAttachments,
     options.limitMemories,
   )
   const filteredAttachments = filterDuplicateMemoryAttachments(
