@@ -38,6 +38,14 @@ function memoryPrefetch(
 }
 
 describe('consumeRelevantMemoryPrefetch', () => {
+  it('returns an empty list when no prefetch was started', async () => {
+    const readFileState = createFileStateCacheWithSizeLimit(100)
+
+    await expect(
+      consumeRelevantMemoryPrefetch(undefined, readFileState, 0),
+    ).resolves.toEqual([])
+  })
+
   it('consumes all settled memories when no sync limit is requested', async () => {
     const readFileState = createFileStateCacheWithSizeLimit(100)
     const prefetch = memoryPrefetch(relevantMemories(3))
@@ -138,6 +146,35 @@ describe('consumeRelevantMemoryPrefetch', () => {
     expect(prefetch.consumedOnIteration).toBe(-1)
   })
 
+  it('can consume later after a sync memory timeout leaves prefetch unconsumed', async () => {
+    const readFileState = createFileStateCacheWithSizeLimit(100)
+    let resolvePrefetch: (attachments: Attachment[]) => void = () => {}
+    const prefetch = memoryPrefetch([], {
+      promise: new Promise(resolve => {
+        resolvePrefetch = resolve
+      }),
+      settledAt: null,
+    })
+
+    await expect(
+      consumeRelevantMemoryPrefetch(prefetch, readFileState, 0, {
+        limitMemories: 2,
+        timeoutMs: 1,
+      }),
+    ).resolves.toEqual([])
+    expect(prefetch.consumedOnIteration).toBe(-1)
+
+    resolvePrefetch(relevantMemories(1))
+    const attachments = await consumeRelevantMemoryPrefetch(
+      prefetch,
+      readFileState,
+      1,
+    )
+
+    expect(attachments).toHaveLength(1)
+    expect(prefetch.consumedOnIteration).toBe(1)
+  })
+
   it('swallows rejected memory prefetch promises and continues', async () => {
     const readFileState = createFileStateCacheWithSizeLimit(100)
     const prefetch = memoryPrefetch([], {
@@ -153,5 +190,20 @@ describe('consumeRelevantMemoryPrefetch', () => {
 
     expect(attachments).toEqual([])
     expect(prefetch.consumedOnIteration).toBe(0)
+  })
+
+  it('does not consume a skipped prefetch even if it resolves later', async () => {
+    const readFileState = createFileStateCacheWithSizeLimit(100)
+    const prefetch = memoryPrefetch(relevantMemories(1), { skipped: true })
+
+    const attachments = await consumeRelevantMemoryPrefetch(
+      prefetch,
+      readFileState,
+      0,
+    )
+
+    expect(attachments).toEqual([])
+    expect(prefetch.consumedOnIteration).toBe(-1)
+    expect(readFileState.has('/memory/1.md')).toBe(false)
   })
 })
